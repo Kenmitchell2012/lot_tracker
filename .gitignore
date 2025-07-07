@@ -1,0 +1,33 @@
+# Python / Virtual Environment
+env/
+__pycache__/
+*.pyc
+
+
+# Django
+db.sqlite3
+media/
+staticfiles/
+
+
+# Secrets
+config.json
+.env
+
+
+# OS-specific (macOS, Windows, Linux)
+.DS_Store
+Thumbs.db
+
+
+# IDE / Editor specific
+.vscode/
+.idea/
+
+
+# Project Specific Folders
+# Ignore the contents of these folders, but not the folders themselves
+scanned_documents/new/*
+scanned_documents/processed/*
+!scanned_documents/new/.gitkeep
+!scanned_documents/processed/.gitkeep

@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+
+{% block title %}Lot Details: {{ lot.donor_id }}{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto p-6">
+    <div class="bg-white p-6 rounded-lg shadow-md mb-8">
+        <h1 class="text-3xl font-bold">{{ lot.donor_id }}</h1>
+        <div class="mt-4 grid grid-cols-2 gap-4 text-gray-600">
+            <p><strong>Product Type:</strong> {{ lot.product_type }}</p>
+            <p><strong>Status:</strong> {{ lot.status }}</p>
+            <p><strong>Date Processed:</strong> {{ lot.date_processed|date:"Y-m-d" }}</p>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-semibold mb-4">History Timeline</h2>
+    <div class="space-y-6">
+        {% for item in timeline_items %}
+            <div class="bg-white p-4 rounded-lg shadow-md flex items-start space-x-4">
+                <div class="text-center w-24">
+                    <p class="font-bold text-teal-600">{{ item.date|date:"Y-m-d" }}</p>
+                    <p class="text-sm text-gray-500">{{ item.date|date:"h:i A" }}</p>
+                </div>
+
+                <div class="flex-1 border-l-2 border-teal-500 pl-4">
+                    {% if item.item_type == 'Event' %}
+                        <h3 class="font-semibold">{{ item.details.event_type }}</h3>
+                        <p class="text-sm text-gray-700">Technician: {{ item.details.technician|default:"N/A" }}</p>
+                    {% elif item.item_type == 'Document' %}
+                        <h3 class="font-semibold">{{ item.details.document_type }}</h3>
+                        <p class="text-sm text-gray-700">{{ item.details.notes|default_if_none:"" }}</p>
+                        <a href="{{ item.details.file.url }}" target="_blank" class="text-blue-500 hover:underline text-sm">View Document</a>
+                    {% endif %}
+                </div>
+            </div>
+        {% empty %}
+            <div class="bg-white p-6 rounded-lg shadow-md text-center">
+                <p class="text-gray-600">No history recorded for this lot.</p>
+            </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

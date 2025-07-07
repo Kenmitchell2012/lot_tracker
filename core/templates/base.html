@@ -1,0 +1,46 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <title>{% block title %}Lot Tracker{% endblock %}</title>
+</head>
+<body class="bg-gray-100">
+    <nav class="bg-teal-600 p-6 text-white">
+        <div class="max-w-6xl mx-auto flex justify-between items-center">
+            <a href="{% url 'tracker:donor_list' %}" class="text-xl font-semibold">Lot History Tracker</a>
+            
+            <div class="space-x-6">
+                <a href="#" class="hover:text-gray-200">Upload Data</a>
+                <a href="/admin/" class="hover:text-gray-200">Admin</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="max-w-6xl mx-auto px-6">
+        {% if messages %}
+            <div class="space-y-2 my-4">
+            {% for message in messages %}
+                <div class="p-4 rounded-md text-center {% if message.tags == 'success' %}bg-green-100 text-green-800{% else %}bg-red-100 text-red-800{% endif %}" role="alert">
+                    <strong>{{ message }}</strong>
+                </div>
+            {% endfor %}
+            </div>
+        {% endif %}
+    </div>
+
+
+    <main class="max-w-6xl mx-auto p-6">
+        {% block content %}
+        {% endblock %}
+    </main>
+
+    <footer class="bg-gray-800 p-6 text-center text-white mt-auto">
+        <p>A Kendrick Mitchell Production</p>
+    </footer>
+</body>
+</html>
