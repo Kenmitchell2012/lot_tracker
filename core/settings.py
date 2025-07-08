@@ -132,3 +132,20 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# --- Authentication URLs ---
+# Tell Django to use the URL named 'login' for all login redirects
+LOGIN_URL = 'login'
+
+# Where to go after a user successfully logs in
+LOGIN_REDIRECT_URL = '/'
+
+# Where to go after a user logs out
+LOGOUT_REDIRECT_URL = '/'
+
+# The URL prefix for your media files
+MEDIA_URL = '/media/'
+
+# The absolute path to the folder where they're stored
+# Change this to point to your processed documents folder
+MEDIA_ROOT = BASE_DIR / 'scanned_documents' / 'processed'

@@ -11,10 +11,23 @@ class Donor(models.Model):
 class Lot(models.Model):
     """Represents a specific lot or product derived from a Donor."""
     donor = models.ForeignKey(Donor, related_name='lots', on_delete=models.CASCADE)
-    lot_id = models.CharField(max_length=255, unique=True) # e.g., 'CRT241002-FEMUR'
+    lot_id = models.CharField(max_length=255, unique=True)
     product_type = models.CharField(max_length=100, blank=True)
-    date_processed = models.DateField(null=True, blank=True)
-    status = models.CharField(max_length=50, default='In-Process')
+    
+    # --- NEW FIELDS ---
+    packaged_by = models.CharField(max_length=255, blank=True, null=True)
+    packaged_date = models.DateField(blank=True, null=True)
+    quantity = models.IntegerField(blank=True, null=True)
+    fpp_date = models.DateField(blank=True, null=True)
+    irr_run_number = models.CharField(max_length=100, blank=True, null=True)
+    irr_out_date = models.DateField(blank=True, null=True)
+    qc_out_number = models.CharField(max_length=100, blank=True, null=True)
+    qc_out_reason = models.TextField(blank=True, null=True)
+    # --- END NEW FIELDS ---
+
+    # We can remove these fields as they are now more specific above
+    # date_processed = models.DateField(null=True, blank=True)
+    # status = models.CharField(max_length=50, default='In-Process')
 
     def __str__(self):
         return self.lot_id

@@ -16,9 +16,23 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
+from django.contrib.auth import views as auth_views
+from tracker.views import signup, CustomLoginView, custom_logout  # Import the signup view and custom login/logout views
+from tracker.forms import LoginForm  # Import the custom login form
+from django.conf import settings               # <-- Import settings
+from django.conf.urls.static import static     
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include('tracker.urls')),
+
+    # --- UPDATED Authentication URLs ---
+    path('signup/', signup, name='signup'),
+    path('login/', CustomLoginView.as_view(), name='login'), # Use the new class-based view
+    path('logout/', custom_logout, name='logout'), # Use the new function-based view
+    # ---------------------------------
 ]
 
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+# --------------------

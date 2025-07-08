@@ -19,4 +19,8 @@ urlpatterns = [
     # Action URLs
     path('sync/', views.sync_with_monday, name='sync_with_monday'),
     # path('upload/', views.csv_upload, name='csv_upload'),
+
+    path('dashboard/', views.admin_dashboard, name='admin_dashboard'),
+    path('dashboard/upload/', views.batch_document_upload, name='batch_document_upload'),
+    path('dashboard/clear/', views.clear_new_folder, name='clear_new_folder'), 
 ]

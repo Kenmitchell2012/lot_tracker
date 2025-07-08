@@ -31,3 +31,5 @@ scanned_documents/new/*
 scanned_documents/processed/*
 !scanned_documents/new/.gitkeep
 !scanned_documents/processed/.gitkeep
+core/settings.py
+/donor_documents
