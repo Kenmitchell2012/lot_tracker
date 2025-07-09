@@ -1,0 +1,21 @@
+{% for donor in donors %}
+    <a href="{% url 'tracker:donor_detail' donor.id %}" class="block bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700 hover:border-teal-500 hover:shadow-teal-500/10 transition-all duration-300">
+        <div class="flex justify-between items-start">
+            <h2 class="text-xl font-bold text-gray-100">{{ donor.donor_id }}</h2>
+
+            {% if donor.lot_count == donor.released_count and donor.lot_count > 0 %}
+                <span class="px-2 py-1 text-xs font-semibold rounded-full bg-green-900 text-green-200">All Released</span>
+            {% else %}
+                <span class="px-2 py-1 text-xs font-semibold rounded-full bg-yellow-900 text-yellow-200">In Process</span>
+            {% endif %}
+        </div>
+        <div class="mt-4 pt-4 border-t border-gray-700 text-sm text-gray-400">
+            <p>Total Lots: <span class="font-semibold text-gray-200">{{ donor.lot_count }}</span></p>
+            <p>Lots Released: <span class="font-semibold text-gray-200">{{ donor.released_count }}</span></p>
+        </div>
+    </a>
+{% empty %}
+    <div class="col-span-full text-center py-12">
+        <p class="text-xl text-gray-500">No donors found for your search.</p>
+    </div>
+{% endfor %}

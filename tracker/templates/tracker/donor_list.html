@@ -3,68 +3,78 @@
 {% block title %}Lot History Tracker{% endblock %}
 
 {% block content %}
-<div class="max-w-6xl mx-auto p-6">
-    <h1 class="text-3xl font-bold mb-6 text-center text-gray-100">Lot History Tracker</h1>
-
-    <div class="text-center mb-6">
-        <form action="{% url 'tracker:sync_with_monday' %}" method="post" class="inline-block align-middle">
-            {% csrf_token %}
-            <button type="submit" class="bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700">
-                Sync from Monday.com
-            </button>
-        </form>
-        {% if last_sync %}
-            <p class="inline-block align-middle ml-4 text-sm text-gray-400">
-                Last updated: {{ last_sync.last_sync_time|timesince }} ago
-            </p>
-        {% endif %}
+<div class="max-w-7xl mx-auto p-6">
+    <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+        <h1 class="text-3xl font-bold text-gray-100">Donor Overview</h1>
+        <div class="text-center">
+            <form action="{% url 'tracker:sync_with_monday' %}" method="post" class="inline-block align-middle">
+                {% csrf_token %}
+                <button type="submit" class="bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700">
+                    Sync from Monday.com
+                </button>
+            </form>
+            {% if last_sync %}
+                <p class="inline-block align-middle ml-4 text-sm text-gray-400">
+                    Last updated: {{ last_sync.last_sync_time|timesince }} ago
+                </p>
+            {% endif %}
+        </div>
     </div>
 
-    <div class="mb-6">
+    <div class="mb-6 space-y-4">
         <input type="text" 
                name="query" 
                class="w-full px-4 py-2 border border-gray-600 bg-gray-700 text-gray-200 rounded-md focus:ring-teal-500 focus:border-teal-500" 
-               placeholder="Search by Donor ID as you type..."
+               placeholder="Search by Donor ID..."
                hx-get="{% url 'tracker:donor_list' %}"
                hx-trigger="keyup changed delay:500ms"
-               hx-target="#donor-table-body"
+               hx-target="#donor-grid"
                hx-swap="innerHTML">
-    </div>
 
-    <div class="text-right text-gray-400 mb-2">
-        <p>Total Donors: <strong>{{ donors.paginator.count }}</strong></p>
-    </div>
+        {% if donors.paginator.num_pages > 1 %}
+            <div class="flex justify-center items-center space-x-1 bg-gray-800 p-2 rounded-md">
+                {% if donors.has_previous %}
+                    <a href="?page={{ donors.previous_page_number }}{% if query %}&query={{ query }}{% endif %}" class="px-3 py-2 text-sm bg-gray-700 rounded-md hover:bg-gray-600">‹</a>
+                {% endif %}
 
-    <div class="bg-gray-800 shadow-md rounded-lg overflow-hidden border border-gray-700">
-        <table class="min-w-full divide-y divide-gray-700">
-            <thead class="bg-gray-700">
-                <tr>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Donor ID</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Lot Count</th> 
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Actions</th>
-                </tr>
-            </thead>
-            <tbody id="donor-table-body" class="bg-gray-800 divide-y divide-gray-700">
-                {% include 'tracker/_donor_rows_partial.html' with donors=donors %}
-            </tbody>
-        </table>
-    </div>
-
-    <div class="mt-6 flex justify-between items-center">
-        <span class="text-sm text-gray-400">
-            Page {{ donors.number }} of {{ donors.paginator.num_pages }}.
-        </span>
-        <div class="space-x-2">
-            {% if donors.has_previous %}
-                <a href="?page=1{% if query %}&query={{ query }}{% endif %}" class="px-4 py-2 text-sm bg-gray-700 rounded-md hover:bg-gray-600">&laquo; First</a>
-                <a href="?page={{ donors.previous_page_number }}{% if query %}&query={{ query }}{% endif %}" class="px-4 py-2 text-sm bg-gray-700 rounded-md hover:bg-gray-600">Previous</a>
-            {% endif %}
+                {% for page_num in donors.paginator.page_range %}
+                    {% if donors.number == page_num %}
+                        <span class="px-4 py-2 text-sm bg-teal-500 text-white font-bold rounded-md">{{ page_num }}</span>
+                    {% elif page_num > donors.number|add:'-3' and page_num < donors.number|add:'3' %}
+                        <a href="?page={{ page_num }}{% if query %}&query={{ query }}{% endif %}" class="px-4 py-2 text-sm bg-gray-700 rounded-md hover:bg-gray-600">{{ page_num }}</a>
+                    {% elif page_num == donors.number|add:'-3' or page_num == donors.number|add:'3' %}
+                        <span class="px-4 py-2 text-sm text-gray-500">...</span>
+                    {% endif %}
+                {% endfor %}
             
-            {% if donors.has_next %}
-                <a href="?page={{ donors.next_page_number }}{% if query %}&query={{ query }}{% endif %}" class="px-4 py-2 text-sm bg-gray-700 rounded-md hover:bg-gray-600">Next</a>
-                <a href="?page={{ donors.paginator.num_pages }}{% if query %}&query={{ query }}{% endif %}" class="px-4 py-2 text-sm bg-gray-700 rounded-md hover:bg-gray-600">Last &raquo;</a>
-            {% endif %}
-        </div>
+                {% if donors.has_next %}
+                    <a href="?page={{ donors.next_page_number }}{% if query %}&query={{ query }}{% endif %}" class="px-3 py-2 text-sm bg-gray-700 rounded-md hover:bg-gray-600">›</a>
+                {% endif %}
+            </div>
+        {% endif %}
+    </div>
+
+    <div id="donor-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        {% for donor in donors %}
+            <a href="{% url 'tracker:donor_detail' donor.id %}" class="block bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700 hover:border-teal-500 hover:shadow-teal-500/10 transition-all duration-300">
+                <div class="flex justify-between items-start">
+                    <h2 class="text-xl font-bold text-gray-100">{{ donor.donor_id }}</h2>
+                    {% if donor.lot_count == donor.released_count and donor.lot_count > 0 %}
+                        <span class="px-2 py-1 text-xs font-semibold rounded-full bg-green-900 text-green-200">All Released</span>
+                    {% else %}
+                        <span class="px-2 py-1 text-xs font-semibold rounded-full bg-yellow-900 text-yellow-200">In Process</span>
+                    {% endif %}
+                </div>
+                <div class="mt-4 pt-4 border-t border-gray-700 text-sm text-gray-400">
+                    <p>Total Lots: <span class="font-semibold text-gray-200">{{ donor.lot_count }}</span></p>
+                    <p>Lots Released: <span class="font-semibold text-gray-200">{{ donor.released_count }}</span></p>
+                </div>
+            </a>
+        {% empty %}
+            <div class="col-span-full text-center py-12">
+                <p class="text-xl text-gray-500">No donors found.</p>
+            </div>
+        {% endfor %}
     </div>
 </div>
 {% endblock %}

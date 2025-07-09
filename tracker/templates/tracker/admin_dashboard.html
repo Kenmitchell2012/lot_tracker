@@ -3,40 +3,41 @@
 {% block title %}Admin Dashboard{% endblock %}
 
 {% block content %}
-<div class="max-w-4xl mx-auto p-6">
-    <h1 class="text-3xl font-bold mb-6 text-gray-100">Admin Dashboard</h1>
+<div class="max-w-6xl mx-auto p-6">
+    <h1 class="text-3xl font-bold mb-8 text-center text-gray-100">Admin Dashboard</h1>
 
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
         <div class="bg-gray-800 p-8 rounded-lg shadow-lg border border-gray-700 text-center flex flex-col justify-center">
             <div>
                 <h2 class="text-xl text-gray-300">Documents Awaiting Processing</h2>
                 <p class="text-6xl font-bold my-4 text-teal-400">{{ files_to_process_count }}</p>
                 <p class="text-gray-400 mb-6">This is the number of files in the 'new' folder.</p>
-                <form method="post" action="{% url 'tracker:admin_dashboard' %}">
-                    {% csrf_token %}
-                    <button type="submit" class="w-full bg-purple-600 text-white font-semibold px-8 py-3 rounded-md hover:bg-purple-700 transition-colors duration-300">
-                        Run Processing Script
-                    </button>
-                </form>
-                <form method="post" action="{% url 'tracker:clear_new_folder' %}" class="flex-1">
-                    {% csrf_token %}
-                    <button type="submit" 
-                            class="w-full bg-red-700 text-white font-semibold px-6 py-3 rounded-md hover:bg-red-800 transition-colors duration-300"
-                            onclick="return confirm('Are you sure you want to move all remaining files to the errors folder?');">
-                        Clear Skipped Files
-                    </button>
-                </form>
+                <div class="flex space-x-4">
+                    <form method="post" action="{% url 'tracker:admin_dashboard' %}" class="flex-1">
+                        {% csrf_token %}
+                        <button type="submit" class="w-full bg-purple-600 text-white font-semibold px-6 py-3 rounded-md hover:bg-purple-700 transition-colors duration-300">
+                            Run Processing Script
+                        </button>
+                    </form>
+                    <form method="post" action="{% url 'tracker:clear_new_folder' %}" class="flex-1">
+                        {% csrf_token %}
+                        <button type="submit" 
+                                class="w-full bg-red-700 text-white font-semibold px-6 py-3 rounded-md hover:bg-red-800 transition-colors duration-300"
+                                onclick="return confirm('Are you sure you want to move all remaining files to the errors folder?');">
+                            Clear Skipped Files
+                        </button>
+                    </form>
+                </div>
             </div>
         </div>
 
         <div class="bg-gray-800 p-8 rounded-lg shadow-lg border border-gray-700">
              <h2 class="text-xl text-gray-300 mb-4 text-center">Upload New Documents</h2>
-
              <div class="flex items-center justify-center mb-4">
                 <input id="overwrite-checkbox" type="checkbox" class="h-4 w-4 rounded border-gray-500 bg-gray-600 text-teal-600 focus:ring-teal-500">
                 <label for="overwrite-checkbox" class="ml-2 block text-sm text-gray-300">Overwrite existing files</label>
             </div>
-            <form action="{% url 'tracker:batch_document_upload' %}" class="dropzone border-2 border-dashed border-gray-600 rounded-lg p-6 text-center" id="my-dropzone">
+             <form action="{% url 'tracker:batch_document_upload' %}" class="dropzone border-2 border-dashed border-gray-600 rounded-lg p-6 text-center" id="my-dropzone">
                 <div class="dz-message text-gray-400">
                     <p class="text-2xl">Drag & Drop Files Here</p>
                     <p class="text-sm">(or click to select files)</p>
@@ -44,54 +45,56 @@
              </form>
         </div>
     </div>
+
+    <div>
+        <h2 class="text-2xl font-semibold mb-4 text-gray-200">Recent Activity</h2>
+        <div class="bg-gray-800 rounded-lg shadow-lg border border-gray-700">
+            <ul class="divide-y divide-gray-700">
+                {% for log in activity_logs %}
+                    <li class="p-4 flex justify-between items-center">
+                        <div>
+                            <p class="font-medium text-gray-100">{{ log.action_type }}</p>
+                            <p class="text-sm text-gray-400">
+                                By <span class="font-semibold">{{ log.user.username|default:"System" }}</span> - {{ log.details }}
+                            </p>
+                        </div>
+                        <span class="text-xs text-gray-500">{{ log.timestamp|timesince }} ago</span>
+                    </li>
+                {% empty %}
+                    <li class="p-4 text-center text-gray-500">No recent activity found.</li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
 </div>
 
 <script>
+// Your Dropzone script remains the same
 Dropzone.options.myDropzone = {
-    // This function is called when the dropzone is initialized
     init: function() {
-        // This event fires for any successful (2xx) server response
         this.on("success", function(file, response) {
-            // Check if the server responded with our "Skipped" status
             if (file.xhr.status === 202) {
-                // Manually remove the default success styling
-                file.previewElement.classList.remove("dz-success");
-                // Add the error and our custom warning classes to make the message visible
-                file.previewElement.classList.add("dz-error", "dz-warning");
-                
-                // Set the message text from the server's JSON response
                 let errorMsgElement = file.previewElement.querySelector("[data-dz-errormessage]");
                 errorMsgElement.textContent = response.message;
+                file.previewElement.classList.add("dz-warning");
             }
         });
-
-        // This event fires for any server error (4xx or 5xx)
         this.on("error", function(file, response) {
             let errorMsgElement = file.previewElement.querySelector("[data-dz-errormessage]");
             errorMsgElement.textContent = response.error || "An unknown server error occurred.";
         });
-        
-        // This function runs after all files in the queue have finished
         this.on("queuecomplete", function() {
             setTimeout(() => {
                 window.location.reload();
-            }, 2000); // 2-second delay to see the statuses
+            }, 2000);
         });
     }
 };
 </script>
 
 <style>
-    .dz-preview.dz-warning .dz-error-message {
-        color: #facc15; /* A bright yellow color for the text */
-    }
-    /* Hide the default red 'X' and green checkmark for our warning state */
+    .dz-preview.dz-warning .dz-error-message { color: #facc15; }
     .dz-preview.dz-warning .dz-error-mark,
-    .dz-preview.dz-warning .dz-success-mark {
-        display: none;
-    }
+    .dz-preview.dz-warning .dz-success-mark { display: none; }
 </style>
-
-
-
 {% endblock %}

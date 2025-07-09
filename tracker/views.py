@@ -4,17 +4,20 @@ import json
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.conf import settings
-from .models import Donor, Lot, Document, Event, SyncLog
+from .models import Donor, Lot, Document, Event, SyncLog, ActivityLog
 from django.utils import timezone
 from datetime import datetime
 from django.core.paginator import Paginator
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.contrib.auth.decorators import login_required
 from .forms import DocumentForm, SignUpForm, LoginForm
 from django.contrib.auth.views import LoginView
 from django.contrib.auth import logout
 from django.contrib.auth import login, authenticate
 from django.shortcuts import render, redirect
+from .forms import DocumentForm # <-- Import the new form
+from django.db.models import Sum, Case, When, IntegerField
+
 
 # admin imports
 import os
@@ -68,13 +71,15 @@ def custom_logout(request):
     messages.success(request, "You have been successfully logged out.")
     return redirect('login')
 
-# This decorator ensures only staff/admins can access the view
-# tracker/views.py
 @user_passes_test(lambda u: u.is_staff)
 def admin_dashboard(request):
+    """
+    Displays an admin dashboard with a file count, an activity log,
+    and buttons to process or clear the document upload folder.
+    """
     new_docs_path = os.path.join(settings.BASE_DIR, 'scanned_documents', 'new')
     
-    # Handle the button press to run the script
+    # This block handles the "Run Processing Script" button press
     if request.method == 'POST':
         try:
             # Create an in-memory text buffer to capture the command's output
@@ -87,28 +92,42 @@ def admin_dashboard(request):
             command_output = output_buffer.getvalue()
             
             # Add each line of the output as a separate message
-            for line in command_output.strip().split('\n'):
+            output_lines = command_output.strip().split('\n')
+            for line in output_lines:
                 if "Successfully" in line:
                     messages.success(request, line)
-                elif "Skipping" in line or "WARNING" in line:
+                elif "Skipping" in line or "WARNING" in line or "NOTICE" in line:
                     messages.warning(request, line)
                 else:
                     messages.info(request, line)
+            
+            # --- This is the new ActivityLog entry ---
+            # Only create a log if the script actually did something
+            if len(output_lines) > 1: # More than just the initial "Scanning..." message
+                ActivityLog.objects.create(
+                    user=request.user,
+                    action_type="Bulk Process Triggered",
+                    details=f"Ran the document processing script. Result: {output_lines[-1]}"
+                )
+            # -----------------------------------------
 
         except Exception as e:
             messages.error(request, f"An error occurred while running the script: {e}")
         
         return redirect('tracker:admin_dashboard')
 
-    # For a normal page load, count the files
+    # For a normal page load, get the file count and activity logs
     try:
         files_to_process_count = len([f for f in os.listdir(new_docs_path) if f.lower().endswith('.pdf')])
     except FileNotFoundError:
         files_to_process_count = 0
         messages.warning(request, f"The directory '{new_docs_path}' was not found.")
 
+    activity_logs = ActivityLog.objects.all()[:15] # Get the 15 most recent logs
+
     context = {
         'files_to_process_count': files_to_process_count,
+        'activity_logs': activity_logs,
     }
     return render(request, 'tracker/admin_dashboard.html', context)
 
@@ -116,7 +135,7 @@ def admin_dashboard(request):
 def clear_new_folder(request):
     """
     On POST, moves all files from the 'new' folder to an 'errors'
-    folder for manual review.
+    folder and creates an activity log entry.
     """
     if request.method == 'POST':
         new_folder_path = os.path.join(settings.BASE_DIR, 'scanned_documents', 'new')
@@ -124,17 +143,26 @@ def clear_new_folder(request):
         
         files_cleared = 0
         try:
-            # Get a list of all files in the 'new' directory
             files_to_clear = [f for f in os.listdir(new_folder_path) if f.lower().endswith('.pdf')]
             
-            for filename in files_to_clear:
-                source_path = os.path.join(new_folder_path, filename)
-                destination_path = os.path.join(errors_folder_path, filename)
-                shutil.move(source_path, destination_path)
-                files_cleared += 1
-            
-            if files_cleared > 0:
-                messages.warning(request, f"Cleared {files_cleared} un-processed files to the 'errors' folder.")
+            # Only proceed if there are files to clear
+            if files_to_clear:
+                for filename in files_to_clear:
+                    source_path = os.path.join(new_folder_path, filename)
+                    destination_path = os.path.join(errors_folder_path, filename)
+                    shutil.move(source_path, destination_path)
+                    files_cleared += 1
+                
+                # --- ADD THE LOGGING LOGIC HERE ---
+                if files_cleared > 0:
+                    details_message = f"Moved {files_cleared} unprocessed files to the errors folder."
+                    ActivityLog.objects.create(
+                        user=request.user,
+                        action_type="Cleared New Folder",
+                        details=details_message
+                    )
+                    messages.warning(request, details_message)
+                # ------------------------------------
             else:
                 messages.info(request, "No files to clear.")
 
@@ -149,27 +177,32 @@ def clear_new_folder(request):
 # --- Main Views ---
 @login_required
 def donor_list(request):
+    """
+    Displays a paginated list of all Donors. For each donor on the current
+    page, it calculates the lot counts to display on the card.
+    """
     query = request.GET.get('query', '')
-    all_donors = Donor.objects.all().order_by('donor_id')
-
-    # Use annotate() to get the count of lots for each donor
-    all_donors = Donor.objects.annotate(lot_count=Count('lots')).order_by('donor_id')
-
+    donor_list_query = Donor.objects.all().order_by('donor_id')
 
     if query:
-        all_donors = all_donors.filter(donor_id__icontains=query)
+        donor_list_query = donor_list_query.filter(donor_id__icontains=query)
 
-    paginator = Paginator(all_donors, 25) 
+    paginator = Paginator(donor_list_query, 24)
     page_number = request.GET.get('page')
     donors_page = paginator.get_page(page_number)
 
-    # --- THIS IS THE NEW LOGIC ---
-    # If the request is from HTMX, render only the partial template
+    # --- THIS IS THE FIX ---
+    # The loop that adds the counts now runs for every request,
+    # ensuring the data is ready for both the full page and the HTMX partial.
+    for donor in donors_page:
+        donor.lot_count = donor.lots.count()
+        donor.released_count = donor.lots.filter(irr_out_date__isnull=False).count()
+    # -----------------------
+    
+    # This block now receives the fully prepared donors_page object
     if 'HX-Request' in request.headers:
-        return render(request, 'tracker/_donor_rows_partial.html', {'donors': donors_page})
-    # ---------------------------
+        return render(request, 'tracker/_donor_card_partial.html', {'donors': donors_page})
 
-    # For a normal page load, fetch the last sync time and render the full page
     try:
         last_sync = SyncLog.objects.latest('last_sync_time')
     except SyncLog.DoesNotExist:
@@ -184,9 +217,8 @@ def donor_list(request):
 
 
 
-# donor detail view
 
-from .forms import DocumentForm # <-- Import the new form
+# donor detail view
 @login_required
 def donor_detail(request, donor_id):
     donor = get_object_or_404(Donor, id=donor_id)
@@ -198,6 +230,14 @@ def donor_detail(request, donor_id):
             document = form.save(commit=False)
             document.donor = donor # Associate the document with the current donor
             document.save()
+
+            # Create a log entry
+            ActivityLog.objects.create(
+                user=request.user,
+                action_type="Document Uploaded",
+                details=f"Uploaded '{document.file.name}' to Donor '{donor.donor_id}'"
+            )
+
             messages.success(request, 'Document uploaded successfully.')
             return redirect('tracker:donor_detail', donor_id=donor.id)
     else:
@@ -233,10 +273,10 @@ def lot_detail(request, lot_id):
     return render(request, 'tracker/lot_detail.html', context)
 
 
-
 def sync_with_monday(request):
     """
-    On POST, fetches all data from a Monday.com board using pagination,
+ 
+   On POST, fetches all data from a Monday.com board using pagination,
     parses it, and creates/updates Lot records in the database.
     """
     if request.method == 'POST':
@@ -339,6 +379,21 @@ def sync_with_monday(request):
                 if not cursor:
                     break
             
+            # --- ADD LOGGING LOGIC HERE ---
+            if items_synced > 0:
+                # Only create a log if items were actually synced
+                details_message = f"Successfully synced {items_synced} items from Monday.com."
+                ActivityLog.objects.create(
+                    user=request.user,
+                    action_type="Data Synced",
+                    details=details_message
+                )
+                messages.success(request, details_message)
+            else:
+                messages.info(request, "Sync complete. No new items found.")
+            # --------------------------
+
+            # Update the SyncLog timestamp regardless
             SyncLog.objects.update_or_create(id=1)
             messages.success(request, f"Successfully synced {items_synced} items from Monday.com.")
 

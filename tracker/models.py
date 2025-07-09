@@ -1,4 +1,5 @@
 from django.db import models
+from django.contrib.auth.models import User
 
 class Donor(models.Model):
     """Represents the main Donor, the 'folder' for all related lots."""
@@ -60,3 +61,17 @@ class SyncLog(models.Model):
 
     def __str__(self):
         return f"Last synced on {self.last_sync_time.strftime('%Y-%m-%d %H:%M:%S')}"
+
+
+
+class ActivityLog(models.Model):
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    action_type = models.CharField(max_length=255)
+    details = models.TextField(blank=True, null=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ('-timestamp',)
+
+    def __str__(self):
+        return f'{self.action_type} by {self.user.username if self.user else "System"} at {self.timestamp}'
