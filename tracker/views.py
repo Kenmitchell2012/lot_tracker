@@ -4,11 +4,11 @@ import json
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.conf import settings
-from .models import Donor, Lot, Document, Event, SyncLog, ActivityLog
+from .models import Donor, Lot, Document, Event, SyncLog, ActivityLog, Report, SubLot
 from django.utils import timezone
 from datetime import datetime
 from django.core.paginator import Paginator
-from django.db.models import Count, Q
+from django.db.models import Count, Q, Sum
 from django.contrib.auth.decorators import login_required
 from .forms import DocumentForm, SignUpForm, LoginForm
 from django.contrib.auth.views import LoginView
@@ -187,6 +187,9 @@ def donor_list(request):
     if query:
         donor_list_query = donor_list_query.filter(donor_id__icontains=query)
 
+    total_grafts_data = Lot.objects.aggregate(total=Sum('quantity'))
+    total_grafts = total_grafts_data['total'] or 0
+
     paginator = Paginator(donor_list_query, 24)
     page_number = request.GET.get('page')
     donors_page = paginator.get_page(page_number)
@@ -209,9 +212,10 @@ def donor_list(request):
         last_sync = None
 
     context = {
-        'donors': donors_page,
-        'query': query,
-        'last_sync': last_sync,
+        'donors': donors_page, # Pass the paginated donors to the template
+        'query': query, # Pass the search query to the template
+        'last_sync': last_sync, # Pass the last sync log to the template
+        'total_grafts': total_grafts,  # Pass the total grafts count to the template
     }
     return render(request, 'tracker/donor_list.html', context)
 
@@ -263,39 +267,73 @@ def lot_detail(request, lot_id):
     """
     lot = get_object_or_404(Lot, id=lot_id)
     
-    # Only fetch events that are directly related to this lot
-    events = lot.events.all().order_by('-event_date')
+    # Get all "child" sub-lots associated with this lot
+    sub_lots = lot.sub_lots.all().order_by('sub_lot_id')
 
     context = {
         'lot': lot,
-        'events': events, # Pass the events queryset directly
+        'sub_lots': sub_lots,
     }
     return render(request, 'tracker/lot_detail.html', context)
 
+@login_required
+def labeled_lot_list(request):
+    """
+    Displays a paginated list of all SubLot records.
+    """
+    query = request.GET.get('query', '')
+    # This query now correctly starts from the SubLot model
+    # and filters for records that have a labeled_date.
+    sub_lots_query = SubLot.objects.all().order_by('-id')
 
+    # If there is a search query, filter the list
+    if query:
+        sub_lots_query = sub_lots_query.filter(sub_lot_id__icontains=query)
+
+    paginator = Paginator(sub_lots_query, 25)
+    page_number = request.GET.get('page')
+    sub_lots_page = paginator.get_page(page_number)
+
+    context = {
+        'sub_lots': sub_lots_page,
+        'query': query,
+    }
+    return render(request, 'tracker/labeled_lot_list.html', context)
+
+@login_required
+def sub_lot_detail(request, sub_lot_id):
+    """
+    Displays the specific details for a single SubLot record.
+    """
+    sub_lot = get_object_or_404(SubLot, id=sub_lot_id)
+    context = {
+        'sub_lot': sub_lot,
+    }
+    return render(request, 'tracker/sub_lot_detail.html', context)
+
+
+@login_required
 def sync_with_monday(request):
     """
- 
-   On POST, fetches all data from a Monday.com board using pagination,
-    parses it, and creates/updates Lot records in the database.
+    On POST, fetches all data from the primary Monday.com board,
+    parses it, and creates or updates Lot records in the database.
     """
     if request.method == 'POST':
-        # --- Configuration ---
         API_URL = "https://api.monday.com/v2"
         API_TOKEN = settings.MONDAY_API_TOKEN
         headers = {"Authorization": API_TOKEN, "Content-Type": "application/json"}
-        board_id = "8120988708"
+
+        # --- This should be the ID for your PRIMARY Lot Tracker board ---
+        board_id = "8120988708" 
         
-        # Corrected Column IDs from your board
-        packaged_by_col = "dropdown_mkkm4k43"
-        packaged_date_col = "date_1_mkkmph2x"
-        quantity_col = "numbers_mkkm2g2a"
-        fpp_date_col = "date4"
-        irr_run_col = "text_mkm0f36c"
-        irr_out_col = "date_mkkmrc5j"
-        qc_out_num_col = "numbers_mkkndb04"
-        qc_out_reason_col = "status_1_mkkn165p"
-        # --- End Configuration ---
+        # --- Update these with the column IDs from your PRIMARY board ---
+        product_type_col = "dropdown__1" # Example
+        packaged_by_col = "person" # Example
+        packaged_date_col = "date_1_mkkmph2x" # Example
+        quantity_col = "numbers_mkkm2g2a" # Example
+        irr_out_col = "date_mkkmrc5j" # Example
+        fpp_date_col = "date" # Example
+        # ... add all other column IDs you need from this board ...
 
         query = f'''
             query ($limit: Int, $cursor: String) {{
@@ -303,12 +341,11 @@ def sync_with_monday(request):
                     items_page(limit: $limit, cursor: $cursor) {{
                         cursor
                         items {{
-                            id
                             name
                             column_values(ids: [
-                                "{packaged_by_col}", "{packaged_date_col}", "{quantity_col}",
-                                "{fpp_date_col}", "{irr_run_col}", "{irr_out_col}",
-                                "{qc_out_num_col}", "{qc_out_reason_col}"
+                                "{product_type_col}", "{packaged_by_col}", 
+                                "{packaged_date_col}", "{quantity_col}", 
+                                "{irr_out_col}", "{fpp_date_col}"
                             ]) {{
                                 id
                                 text
@@ -330,8 +367,7 @@ def sync_with_monday(request):
                 response = requests.post(API_URL, headers=headers, json=data)
                 response.raise_for_status()
                 results = response.json()
-                
-                # This section correctly defines 'items' before it is used
+
                 items_page = results.get('data', {}).get('boards', [{}])[0].get('items_page', {})
                 items = items_page.get('items', [])
                 
@@ -340,60 +376,56 @@ def sync_with_monday(request):
 
                 for item in items:
                     full_lot_id = item.get('name')
-                    if not full_lot_id or len(full_lot_id) < 9:
+                    if not full_lot_id:
                         continue
 
-                    donor_id_str = full_lot_id[:9].strip()
-                    product_type_str = full_lot_id[9:].strip().lstrip('- ')
+                    donor_id_str = full_lot_id.split('-')[0].strip()
                     
                     donor_object, _ = Donor.objects.get_or_create(donor_id=donor_id_str)
                     
+                    # We can't set product_type in defaults because we need to parse it first
                     lot_object, created = Lot.objects.get_or_create(
                         lot_id=full_lot_id,
-                        defaults={'donor': donor_object, 'product_type': product_type_str}
+                        defaults={'donor': donor_object}
                     )
 
+                    # Initialize variables and extract all data from columns
+                    product_type_str, packaged_by, packaged_date, quantity, irr_out, fpp_date = None, None, None, None, None, None
                     for col in item['column_values']:
                         col_text = col.get('text')
-                        if col['id'] == packaged_by_col:
-                            lot_object.packaged_by = col_text
+                        if col['id'] == product_type_col:
+                            product_type_str = col_text
+                        elif col['id'] == packaged_by_col:
+                            packaged_by = col_text
                         elif col['id'] == packaged_date_col:
-                            lot_object.packaged_date = col_text if col_text else None
+                            packaged_date = col_text if col_text else None
                         elif col['id'] == quantity_col:
-                            lot_object.quantity = int(col_text) if col_text and col_text.isdigit() else None
-                        elif col['id'] == fpp_date_col:
-                            lot_object.fpp_date = col_text if col_text else None
-                        elif col['id'] == irr_run_col:
-                            lot_object.irr_run_number = col_text
+                            quantity = int(col_text) if col_text and col_text.isdigit() else None
                         elif col['id'] == irr_out_col:
-                            lot_object.irr_out_date = col_text if col_text else None
-                        elif col['id'] == qc_out_num_col:
-                            lot_object.qc_out_number = col_text
-                        elif col['id'] == qc_out_reason_col:
-                            lot_object.qc_out_reason = col_text
+                            irr_out = col_text if col_text else None
+                        elif col['id'] == fpp_date_col:
+                            fpp_date = col_text if col_text else None
+
+                    # --- THIS IS THE FIX ---
+                    # Assign an empty string if product_type is None to prevent the error
+                    lot_object.product_type = product_type_str if product_type_str else ""
+                    # -----------------------
                     
+                    lot_object.packaged_by = packaged_by
+                    lot_object.packaged_date = packaged_date
+                    lot_object.quantity = quantity
+                    lot_object.irr_out_date = irr_out
+                    lot_object.fpp_date = fpp_date
+                    lot_object.data_source = 'PRIMARY_SYNC'
                     lot_object.save()
+                    
                     items_synced += 1
 
                 cursor = items_page.get('cursor')
                 if not cursor:
                     break
             
-            # --- ADD LOGGING LOGIC HERE ---
-            if items_synced > 0:
-                # Only create a log if items were actually synced
-                details_message = f"Successfully synced {items_synced} items from Monday.com."
-                ActivityLog.objects.create(
-                    user=request.user,
-                    action_type="Data Synced",
-                    details=details_message
-                )
-                messages.success(request, details_message)
-            else:
-                messages.info(request, "Sync complete. No new items found.")
-            # --------------------------
-
-            # Update the SyncLog timestamp regardless
+            ActivityLog.objects.create(user=request.user, action_type="Primary Data Synced", details=f"Synced {items_synced} lots.")
             SyncLog.objects.update_or_create(id=1)
             messages.success(request, f"Successfully synced {items_synced} items from Monday.com.")
 
@@ -401,6 +433,17 @@ def sync_with_monday(request):
             logging.error("ERROR IN SYNC VIEW:", exc_info=True)
             messages.error(request, f"An error occurred during sync: {e}")
 
+    return redirect('tracker:donor_list')
+
+@user_passes_test(lambda u: u.is_staff)
+def sync_labeling_data_view(request):
+    """Triggers the sync_labeling_data management command."""
+    if request.method == 'POST':
+        try:
+            call_command('sync_labeling_data')
+            messages.success(request, "Labeling data sync has been started.")
+        except Exception as e:
+            messages.error(request, f"An error occurred: {e}")
     return redirect('tracker:donor_list')
 
 # -- receive the uploaded files and save them to your scanned_documents/new/ folder. --
@@ -435,3 +478,44 @@ def batch_document_upload(request):
             return JsonResponse({'error': str(e)}, status=400)
     
     return JsonResponse({'error': 'Invalid request'}, status=400)
+
+@login_required
+def report_list(request):
+    # Handle the form submission to generate a new report
+    if request.method == 'POST':
+        month = request.POST.get('month')
+        year = request.POST.get('year')
+        try:
+            # Run the management command from the view
+            call_command('generate_report', month, year)
+            messages.success(request, f"Successfully generated report for {month}/{year}.")
+        except Exception as e:
+            messages.error(request, f"Failed to generate report: {e}")
+        return redirect('tracker:report_list')
+
+    # For a GET request, just display the list of existing reports
+    reports = Report.objects.all()
+    current_year = datetime.now().year
+    years = range(current_year - 5, current_year + 1) # A range of recent years
+    months = [
+        {"value": 1, "name": "January"}, {"value": 2, "name": "February"},
+        {"value": 3, "name": "March"}, {"value": 4, "name": "April"},
+        {"value": 5, "name": "May"}, {"value": 6, "name": "June"},
+        {"value": 7, "name": "July"}, {"value": 8, "name": "August"},
+        {"value": 9, "name": "September"}, {"value": 10, "name": "October"},
+        {"value": 11, "name": "November"}, {"value": 12, "name": "December"}
+    ]
+    context = {
+        'reports': reports,
+        'years': years,
+        'months': months,
+    }
+    return render(request, 'tracker/report_list.html', context)
+
+@login_required
+def report_detail(request, report_id):
+    report = get_object_or_404(Report, id=report_id)
+    context = {
+        'report': report,
+    }
+    return render(request, 'tracker/report_detail.html', context)

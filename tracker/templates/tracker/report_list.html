@@ -1,0 +1,48 @@
+{% extends 'base.html' %}
+
+{% block title %}Reports{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto p-6">
+    <h1 class="text-3xl font-bold mb-6 text-gray-100">Reports</h1>
+
+    <div class="bg-gray-800 p-6 rounded-lg shadow-md border border-gray-700 mb-8">
+        <h2 class="text-xl font-semibold mb-4">Generate New Monthly Report</h2>
+        <form method="post" action="{% url 'tracker:report_list' %}" class="flex items-end space-x-4">
+            {% csrf_token %}
+            <div>
+                <label for="month" class="block text-sm font-medium text-gray-300">Month</label>
+                <select name="month" id="month" class="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md p-2">
+                    {% for month in months %}
+                        <option value="{{ month.value }}">{{ month.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="year" class="block text-sm font-medium text-gray-300">Year</label>
+                <select name="year" id="year" class="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md p-2">
+                    {% for year in years %}
+                        <option value="{{ year }}">{{ year }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button type="submit" class="bg-purple-600 text-white px-5 py-2 rounded-md hover:bg-purple-700">Generate</button>
+        </form>
+        <p class="mt-2 text-sm text-gray-400">Generate a report for the selected month and year.</p>
+    </div>
+
+    <div class="bg-gray-800 p-6 rounded-lg shadow-md border border-gray-700">
+        <h2 class="text-xl font-semibold mb-4">Generated Reports</h2>
+        <ul class="divide-y divide-gray-700">
+            {% for report in reports %}
+                <li class="py-3">
+                    <a href="{% url 'tracker:report_detail' report.id %}" class="text-teal-400 hover:underline">Report for {{ report.month }}/{{ report.year }}</a>
+                    <p class="text-xs text-gray-500">Generated on: {{ report.generated_at|date:"Y-m-d" }}</p>
+                </li>
+            {% empty %}
+                <li class="py-3 text-gray-400">No reports have been generated yet.</li>
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+{% endblock %}

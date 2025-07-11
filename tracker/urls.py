@@ -22,5 +22,10 @@ urlpatterns = [
 
     path('dashboard/', views.admin_dashboard, name='admin_dashboard'),
     path('dashboard/upload/', views.batch_document_upload, name='batch_document_upload'),
-    path('dashboard/clear/', views.clear_new_folder, name='clear_new_folder'), 
+    path('dashboard/clear/', views.clear_new_folder, name='clear_new_folder'),
+    path('reports/', views.report_list, name='report_list'),
+    path('reports/<int:report_id>/', views.report_detail, name='report_detail'),
+    path('dashboard/sync-labels/', views.sync_labeling_data_view, name='sync_labeling_data'),
+    path('reports/labeled-lots/', views.labeled_lot_list, name='labeled_lot_list'),
+    path('sub-lot/<int:sub_lot_id>/', views.sub_lot_detail, name='sub_lot_detail')
 ]

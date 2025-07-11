@@ -2,36 +2,45 @@ from django.db import models
 from django.contrib.auth.models import User
 
 class Donor(models.Model):
-    """Represents the main Donor, the 'folder' for all related lots."""
     donor_id = models.CharField(max_length=200, unique=True)
-    # You can add other donor-level fields here later if needed
-
     def __str__(self):
         return self.donor_id
 
 class Lot(models.Model):
-    """Represents a specific lot or product derived from a Donor."""
+    """Represents the PRIMARY lot (e.g., CRT999999-DCM)."""
+    DATA_SOURCE_CHOICES = [
+        ('PRIMARY_SYNC', 'Primary Sync'),
+        ('PLACEHOLDER', 'Placeholder'),
+    ]
+
     donor = models.ForeignKey(Donor, related_name='lots', on_delete=models.CASCADE)
     lot_id = models.CharField(max_length=255, unique=True)
     product_type = models.CharField(max_length=100, blank=True)
-    
-    # --- NEW FIELDS ---
     packaged_by = models.CharField(max_length=255, blank=True, null=True)
     packaged_date = models.DateField(blank=True, null=True)
     quantity = models.IntegerField(blank=True, null=True)
-    fpp_date = models.DateField(blank=True, null=True)
-    irr_run_number = models.CharField(max_length=100, blank=True, null=True)
     irr_out_date = models.DateField(blank=True, null=True)
-    qc_out_number = models.CharField(max_length=100, blank=True, null=True)
-    qc_out_reason = models.TextField(blank=True, null=True)
-    # --- END NEW FIELDS ---
 
-    # We can remove these fields as they are now more specific above
-    # date_processed = models.DateField(null=True, blank=True)
-    # status = models.CharField(max_length=50, default='In-Process')
-
+    data_source = models.CharField(
+        max_length=20, 
+        choices=DATA_SOURCE_CHOICES, 
+        default='PRIMARY_SYNC'
+    )
+    
     def __str__(self):
         return self.lot_id
+
+class SubLot(models.Model):
+    """Represents a final LABELED lot (e.g., CRT999999-DCM-AR) and links to its parent."""
+    parent_lot = models.ForeignKey(Lot, related_name='sub_lots', on_delete=models.CASCADE)
+    sub_lot_id = models.CharField(max_length=255, unique=True)
+    labeled_by = models.CharField(max_length=255, blank=True, null=True)
+    labeled_date = models.DateField(blank=True, null=True)
+    final_quantity = models.IntegerField(blank=True, null=True)
+    status = models.CharField(max_length=100, blank=True, null=True)
+
+    def __str__(self):
+        return self.sub_lot_id
 
 class Document(models.Model):
     """Represents a file (NCR, etc.) associated with a specific Donor."""
@@ -75,3 +84,18 @@ class ActivityLog(models.Model):
 
     def __str__(self):
         return f'{self.action_type} by {self.user.username if self.user else "System"} at {self.timestamp}'
+    
+class Report(models.Model):
+    """Stores the generated data from a monthly report."""
+    month = models.IntegerField()
+    year = models.IntegerField()
+    generated_at = models.DateTimeField(auto_now_add=True)
+    report_data = models.JSONField()
+
+    class Meta:
+        # Ensures you can't have two reports for the same month and year
+        unique_together = ('month', 'year')
+        ordering = ('-year', '-month')
+
+    def __str__(self):
+        return f"Report for {self.month}/{self.year}"

@@ -1,0 +1,106 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Report for {{ report.month }}/{{ report.year }}{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto p-6">
+    <div class="mb-8">
+        <h1 class="text-3xl font-bold text-gray-100">Report for {{ report.month }}/{{ report.year }}</h1>
+        <a href="{% url 'tracker:report_list' %}" class="inline-flex items-center text-sm text-teal-400 hover:text-teal-300 mt-2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+            Back to All Reports
+        </a>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        
+        <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
+            <h2 class="text-xl font-semibold mb-4 text-gray-200 text-center">Grafts Produced</h2>
+            <div class="w-full h-64 mx-auto">
+                <canvas id="producedChart"></canvas>
+            </div>
+            <div class="mt-4 pt-4 border-t border-gray-700">
+                {% include 'tracker/_report_table_partial.html' with data=report.report_data.produced %}
+            </div>
+        </div>
+
+        <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
+            <h2 class="text-xl font-semibold mb-4 text-gray-200 text-center">Grafts to Irradiation</h2>
+            <div class="w-full h-64 mx-auto">
+                <canvas id="irradiatedChart"></canvas>
+            </div>
+            <div class="mt-4 pt-4 border-t border-gray-700">
+                {% include 'tracker/_report_table_partial.html' with data=report.report_data.irradiated %}
+            </div>
+        </div>
+        
+        <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
+            <h2 class="text-xl font-semibold mb-4 text-gray-200 text-center">Grafts Labeled</h2>
+            <div class="w-full h-64 mx-auto">
+                <canvas id="labeledChart"></canvas>
+            </div>
+            <div class="mt-4 pt-4 border-t border-gray-700">
+                {% include 'tracker/_report_table_partial.html' with data=report.report_data.labeled %}
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Get the report data from the Django template
+    const reportData = {{ report.report_data|safe }};
+
+    // A color palette for the charts
+    const chartColors = [
+        '#0d9488', '#059669', '#1d4ed8', '#7c3aed', '#db2777',
+        '#e11d48', '#f97316', '#f59e0b', '#84cc16', '#22d3ee'
+    ];
+
+    // Helper function to create a doughnut chart
+    const createDoughnutChart = (canvasId, chartLabel, data) => {
+        const ctx = document.getElementById(canvasId).getContext('2d');
+        
+        const labels = data.map(item => item.product_type);
+        const values = data.map(item => item.total);
+
+        new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: chartLabel,
+                    data: values,
+                    backgroundColor: chartColors,
+                    borderColor: '#1f2937', // bg-gray-800
+                    borderWidth: 2,
+                    hoverOffset: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            color: '#d1d5db', // text-gray-300
+                            padding: 15,
+                        }
+                    }
+                }
+            }
+        });
+    };
+
+    // Create a chart for each data set
+    createDoughnutChart('producedChart', 'Total Produced', reportData.produced);
+    createDoughnutChart('irradiatedChart', 'Total to Irradiation', reportData.irradiated);
+    createDoughnutChart('labeledChart', 'Total Labeled', reportData.labeled);
+});
+</script>
+{% endblock %}

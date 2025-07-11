@@ -13,6 +13,12 @@
                     Sync from Monday.com
                 </button>
             </form>
+            <form action="{% url 'tracker:sync_labeling_data' %}" method="post" class="inline-block">
+                {% csrf_token %}
+                <button type="submit" class="bg-sky-600 text-white px-4 py-2 rounded-md hover:bg-sky-700">
+                    Sync Labeling Data
+                </button>
+            </form>
             {% if last_sync %}
                 <p class="inline-block align-middle ml-4 text-sm text-gray-400">
                     Last updated: {{ last_sync.last_sync_time|timesince }} ago
@@ -57,8 +63,9 @@
         {% endif %}
     </div>
 
-    <div class="text-right text-gray-400 mb-2">
-        <p>Total Donors: <strong>{{ donors.paginator.count }}</strong></p>
+    <div class="flex justify-end space-x-6 text-right text-gray-400 mb-2">
+        <p>Total Grafts: <strong class="text-white">{{ total_grafts }}</strong></p>
+        <p>Total Donors: <strong class="text-white">{{ donors.paginator.count }}</strong></p>
     </div>
 
     <div id="donor-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
