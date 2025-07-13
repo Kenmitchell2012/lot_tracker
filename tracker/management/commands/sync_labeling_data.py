@@ -5,7 +5,7 @@ from django.conf import settings
 from tracker.models import Lot, SubLot, Donor
 
 class Command(BaseCommand):
-    help = 'Creates or updates SubLot records from the labeling board, with detailed logging.'
+    help = 'Creates or updates SubLots, creating placeholder parent Lots if necessary.'
 
     def handle(self, *args, **options):
         # --- CONFIGURATION (Use your real Column IDs from the LABELING board) ---
@@ -43,7 +43,10 @@ class Command(BaseCommand):
         
         limit = 100
         cursor = None
-        total_fetched, created_count, updated_count, skipped_count = 0, 0, 0, 0
+        created_count = 0
+        updated_count = 0
+        skipped_count = 0
+        total_fetched = 0
         page_count = 1
 
         self.stdout.write(f"--- Starting Sub-Lot Sync from board {labeling_board_id} ---")
@@ -85,38 +88,51 @@ class Command(BaseCommand):
                     
                     try:
                         parent_lot_obj = Lot.objects.get(lot_id=parent_id)
+                    except Lot.DoesNotExist:
+                        # If the parent lot doesn't exist, create a placeholder for it
+                        self.stdout.write(self.style.NOTICE(f"  Parent lot '{parent_id}' not found. Creating placeholder..."))
                         
-                        labeled_by, labeled_date_str, final_qty, status = None, None, None, None
-                        for col in item['column_values']:
-                            col_text = col.get('text')
-                            if col['id'] == labeled_by_col: labeled_by = col_text
-                            elif col['id'] == labeled_date_col: labeled_date_str = col_text
-                            elif col['id'] == final_qty_col: final_qty = int(col_text) if col_text and col_text.isdigit() else None
-                            elif col['id'] == chart_status_col: status = col_text
-
-                        if labeled_date_str and ' - ' in labeled_date_str:
-                            labeled_date_str = labeled_date_str.split(' - ')[0]
+                        donor_id_str = parent_id.split('-')[0]
+                        product_type_str = parent_id.split('-')[1] if len(parent_id.split('-')) > 1 else ''
                         
-                        sublot, created = SubLot.objects.update_or_create(
-                            sub_lot_id=full_sublot_id,
+                        donor_obj, _ = Donor.objects.get_or_create(donor_id=donor_id_str)
+                        
+                        parent_lot_obj, _ = Lot.objects.get_or_create(
+                            lot_id=parent_id,
                             defaults={
-                                'parent_lot': parent_lot_obj,
-                                'labeled_by': labeled_by,
-                                'labeled_date': labeled_date_str if labeled_date_str else None,
-                                'final_quantity': final_qty,
-                                'status': status,
+                                'donor': donor_obj,
+                                'product_type': product_type_str,
+                                'data_source': 'PLACEHOLDER'
                             }
                         )
-                        
-                        if created:
-                            created_count += 1
-                        else:
-                            updated_count += 1
 
-                    except Lot.DoesNotExist:
-                        self.stdout.write(self.style.WARNING(f"  SKIPPED: Parent lot '{parent_id}' not found."))
-                        skipped_count += 1
-                        continue
+                    # Now that parent_lot_obj is guaranteed to exist, create or update the SubLot
+                    labeled_by, labeled_date_str, final_qty, status = None, None, None, None
+                    for col in item['column_values']:
+                        col_text = col.get('text')
+                        if col['id'] == labeled_by_col: labeled_by = col_text
+                        elif col['id'] == labeled_date_col: labeled_date_str = col_text
+                        elif col['id'] == final_qty_col: final_qty = int(col_text) if col_text and col_text.isdigit() else None
+                        elif col['id'] == chart_status_col: status = col_text
+
+                    if labeled_date_str and ' - ' in labeled_date_str:
+                        labeled_date_str = labeled_date_str.split(' - ')[0]
+                    
+                    sublot, created = SubLot.objects.update_or_create(
+                        sub_lot_id=full_sublot_id,
+                        defaults={
+                            'parent_lot': parent_lot_obj,
+                            'labeled_by': labeled_by,
+                            'labeled_date': labeled_date_str if labeled_date_str else None,
+                            'final_quantity': final_qty,
+                            'status': status,
+                        }
+                    )
+                    
+                    if created:
+                        created_count += 1
+                    else:
+                        updated_count += 1
                 
                 cursor = items_page.get('cursor')
                 self.stdout.write(f"Page {page_count} processed. Next cursor: {cursor}")

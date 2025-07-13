@@ -312,45 +312,31 @@ def sub_lot_detail(request, sub_lot_id):
     return render(request, 'tracker/sub_lot_detail.html', context)
 
 
-@login_required
 def sync_with_monday(request):
-    """
-    On POST, fetches all data from the primary Monday.com board,
-    parses it, and creates or updates Lot records in the database.
-    """
     if request.method == 'POST':
+        # --- CONFIGURATION (from your MAIN Lot Tracker Board) ---
         API_URL = "https://api.monday.com/v2"
         API_TOKEN = settings.MONDAY_API_TOKEN
-        headers = {"Authorization": API_TOKEN, "Content-Type": "application/json"}
-
-        # --- This should be the ID for your PRIMARY Lot Tracker board ---
-        board_id = "8120988708" 
+        headers = {"Authorization": API_TOKEN}
+        board_id = "8120988708"
         
-        # --- Update these with the column IDs from your PRIMARY board ---
-        product_type_col = "dropdown__1" # Example
-        packaged_by_col = "person" # Example
-        packaged_date_col = "date_1_mkkmph2x" # Example
-        quantity_col = "numbers_mkkm2g2a" # Example
-        irr_out_col = "date_mkkmrc5j" # Example
-        fpp_date_col = "date" # Example
-        # ... add all other column IDs you need from this board ...
+        # --- Using your real Column IDs ---
+        product_family_col = "label_mkkmvaff"
+        packaged_by_col = "dropdown_mkkm4k43"
+        packaged_date_col = "date_1_mkkmph2x"
+        quantity_col = "numbers_mkkm2g2a"
+        fpp_date_col = "date4"
+        irr_out_col = "date_mkkmrc5j"
+        # --- END CONFIGURATION ---
 
         query = f'''
             query ($limit: Int, $cursor: String) {{
                 boards(ids: {board_id}) {{
                     items_page(limit: $limit, cursor: $cursor) {{
-                        cursor
-                        items {{
-                            name
-                            column_values(ids: [
-                                "{product_type_col}", "{packaged_by_col}", 
-                                "{packaged_date_col}", "{quantity_col}", 
-                                "{irr_out_col}", "{fpp_date_col}"
-                            ]) {{
-                                id
-                                text
-                            }}
-                        }}
+                        cursor, items {{ name, column_values(ids: [
+                            "{product_family_col}", "{packaged_by_col}", "{packaged_date_col}",
+                            "{quantity_col}", "{fpp_date_col}", "{irr_out_col}"
+                        ]) {{ id, text }} }}
                     }}
                 }}
             }}
@@ -380,45 +366,46 @@ def sync_with_monday(request):
                         continue
 
                     donor_id_str = full_lot_id.split('-')[0].strip()
-                    
                     donor_object, _ = Donor.objects.get_or_create(donor_id=donor_id_str)
                     
-                    # We can't set product_type in defaults because we need to parse it first
-                    lot_object, created = Lot.objects.get_or_create(
+                    # --- Robust Product Type Parsing ---
+                    product_type_str = None
+                    for col in item['column_values']:
+                        # This line was using the old, undefined variable 'product_type_col'
+                        # Change it to use 'product_family_col'
+                        if col['id'] == product_family_col: #<-- THE FIX
+                            product_type_str = col.get('text')
+                    
+                    # Fallback: If the column was empty, parse from the lot name
+                    if not product_type_str and len(full_lot_id.split('-')) > 1:
+                        product_type_str = full_lot_id.split('-')[1].strip()
+                    # --- End Parsing ---
+
+                    # Use update_or_create to handle both new and existing lots
+                    lot_object, created = Lot.objects.update_or_create(
                         lot_id=full_lot_id,
-                        defaults={'donor': donor_object}
+                        defaults={
+                            'donor': donor_object,
+                            'product_type': product_type_str if product_type_str else "",
+                            'data_source': 'PRIMARY_SYNC' # Mark as a full record
+                        }
                     )
 
-                    # Initialize variables and extract all data from columns
-                    product_type_str, packaged_by, packaged_date, quantity, irr_out, fpp_date = None, None, None, None, None, None
+                    # Update other fields like quantity, dates, etc.
                     for col in item['column_values']:
                         col_text = col.get('text')
-                        if col['id'] == product_type_col:
-                            product_type_str = col_text
-                        elif col['id'] == packaged_by_col:
-                            packaged_by = col_text
+                        if col['id'] == packaged_by_col:
+                            lot_object.packaged_by = col_text
                         elif col['id'] == packaged_date_col:
-                            packaged_date = col_text if col_text else None
+                            lot_object.packaged_date = col_text if col_text else None
                         elif col['id'] == quantity_col:
-                            quantity = int(col_text) if col_text and col_text.isdigit() else None
+                            lot_object.quantity = int(col_text) if col_text and col_text.isdigit() else None
                         elif col['id'] == irr_out_col:
-                            irr_out = col_text if col_text else None
+                            lot_object.irr_out_date = col_text if col_text else None
                         elif col['id'] == fpp_date_col:
-                            fpp_date = col_text if col_text else None
-
-                    # --- THIS IS THE FIX ---
-                    # Assign an empty string if product_type is None to prevent the error
-                    lot_object.product_type = product_type_str if product_type_str else ""
-                    # -----------------------
+                            lot_object.fpp_date = col_text if col_text else None
                     
-                    lot_object.packaged_by = packaged_by
-                    lot_object.packaged_date = packaged_date
-                    lot_object.quantity = quantity
-                    lot_object.irr_out_date = irr_out
-                    lot_object.fpp_date = fpp_date
-                    lot_object.data_source = 'PRIMARY_SYNC'
                     lot_object.save()
-                    
                     items_synced += 1
 
                 cursor = items_page.get('cursor')
@@ -481,41 +468,112 @@ def batch_document_upload(request):
 
 @login_required
 def report_list(request):
-    # Handle the form submission to generate a new report
     if request.method == 'POST':
-        month = request.POST.get('month')
-        year = request.POST.get('year')
+        # This correctly calls your monthly report generator
         try:
-            # Run the management command from the view
-            call_command('generate_report', month, year)
-            messages.success(request, f"Successfully generated report for {month}/{year}.")
+            call_command('generate_report')
+            messages.success(request, "Successfully updated the monthly report data.")
         except Exception as e:
             messages.error(request, f"Failed to generate report: {e}")
         return redirect('tracker:report_list')
 
-    # For a GET request, just display the list of existing reports
-    reports = Report.objects.all()
+    # --- NEW: Get data for the filter dropdowns ---
+    all_product_types = Lot.objects.values_list('product_type', flat=True).distinct().order_by('product_type')
+    
     current_year = datetime.now().year
-    years = range(current_year - 5, current_year + 1) # A range of recent years
-    months = [
-        {"value": 1, "name": "January"}, {"value": 2, "name": "February"},
-        {"value": 3, "name": "March"}, {"value": 4, "name": "April"},
-        {"value": 5, "name": "May"}, {"value": 6, "name": "June"},
-        {"value": 7, "name": "July"}, {"value": 8, "name": "August"},
-        {"value": 9, "name": "September"}, {"value": 10, "name": "October"},
-        {"value": 11, "name": "November"}, {"value": 12, "name": "December"}
-    ]
+    years = range(current_year - 5, current_year + 1)
+    # ---
+    
+    # Calculate the data for all three summary charts for the main dashboard
+    packaged_summary_data = Lot.objects.values('product_type').annotate(total=Sum('quantity')).order_by('-total')
+    
+    labeled_summary_query = SubLot.objects.values('parent_lot__product_type').annotate(total=Sum('final_quantity')).order_by('-total')
+    labeled_summary_cleaned = [{'product_type': item['parent_lot__product_type'], 'total': item['total']} for item in labeled_summary_query if item['parent_lot__product_type']]
+    
+    fpp_summary_data = Lot.objects.filter(fpp_date__isnull=False).values('product_type').annotate(total=Sum('quantity')).order_by('-total')
+    # --- END FIX ---
+
+    # Get the list of generated monthly reports to show at the bottom
+    reports = Report.objects.all().order_by('-year', '-month')
+    
     context = {
         'reports': reports,
-        'years': years,
-        'months': months,
+        'packaged_chart_data': json.dumps(list(packaged_summary_data)),
+        'labeled_chart_data': json.dumps(labeled_summary_cleaned),
+        'fpp_chart_data': json.dumps(list(fpp_summary_data)),
+        'all_product_types': all_product_types,  # Pass the product
+        'years': years,  # Pass the years for the filter dropdown
     }
     return render(request, 'tracker/report_list.html', context)
 
 @login_required
 def report_detail(request, report_id):
     report = get_object_or_404(Report, id=report_id)
+
+    # --- Calculate data for all three summary charts ---
+    # 1. All-Time Packaged Grafts
+    packaged_summary_data = Lot.objects.values('product_type')\
+        .annotate(total=Sum('quantity')).order_by('-total')
+
+    # 2. All-Time Labeled Grafts
+    labeled_summary_query = SubLot.objects.values('parent_lot__product_type')\
+        .annotate(total=Sum('final_quantity')).order_by('-total')
+    
+    labeled_summary_cleaned = [
+        {'product_type': item['parent_lot__product_type'], 'total': item['total']}
+        for item in labeled_summary_query if item['parent_lot__product_type']
+    ]
+    
+    # 3. All-Time FPP Inspected Grafts
+    fpp_summary_data = Lot.objects.filter(fpp_date__isnull=False)\
+        .values('product_type').annotate(total=Sum('quantity')).order_by('-total')
+
     context = {
         'report': report,
+        'packaged_chart_data': json.dumps(list(packaged_summary_data)),
+        'labeled_chart_data': json.dumps(labeled_summary_cleaned),
+        'fpp_chart_data': json.dumps(list(fpp_summary_data)), # Add new data
     }
     return render(request, 'tracker/report_detail.html', context)
+
+@login_required
+def interactive_report_data(request):
+    """
+    This special view is called by JavaScript. It calculates and returns
+    the data needed for the interactive chart based on the user's filters.
+    """
+    product_type = request.GET.get('product_type')
+    year = request.GET.get('year')
+
+    # Start with all lots
+    queryset = Lot.objects.all()
+
+    # Apply filters if they are provided and not 'all'
+    if product_type and product_type != 'all':
+        queryset = queryset.filter(product_type=product_type)
+    
+    if year and year != 'all':
+        queryset = queryset.filter(packaged_date__year=year)
+
+    # Calculate totals
+    result = queryset.aggregate(
+        total_grafts=Sum('quantity'),
+        total_lots=Count('id')
+    )
+
+    # Return the data as a JSON response
+    return JsonResponse({
+        'total_grafts': result['total_grafts'] or 0,
+        'total_lots': result['total_lots'] or 0,
+    })
+
+
+@user_passes_test(lambda u: u.is_staff)
+def delete_report(request, report_id):
+    # This view only accepts POST requests for safety
+    if request.method == 'POST':
+        report = get_object_or_404(Report, id=report_id)
+        report.delete()
+        messages.success(request, "Report was successfully deleted.")
+    
+    return redirect('tracker:report_list')

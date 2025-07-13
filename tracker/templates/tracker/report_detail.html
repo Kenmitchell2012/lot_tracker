@@ -1,106 +1,100 @@
 {% extends 'base.html' %}
 {% load static %}
-
-{% block title %}Report for {{ report.month }}/{{ report.year }}{% endblock %}
+{% block title %}Report: 12-Month Trends{% endblock %}
 
 {% block content %}
 <div class="max-w-7xl mx-auto p-6">
-    <div class="mb-8">
-        <h1 class="text-3xl font-bold text-gray-100">Report for {{ report.month }}/{{ report.year }}</h1>
-        <a href="{% url 'tracker:report_list' %}" class="inline-flex items-center text-sm text-teal-400 hover:text-teal-300 mt-2">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-            Back to All Reports
-        </a>
+    <div class="flex justify-between items-start mb-8">
+        <div>
+            <h1 class="text-3xl font-bold text-gray-100">12-Month Trend Report</h1>
+            <p class="text-gray-400">Generated on: {{ report.generated_at|date:"F j, Y" }}</p>
+            <a href="{% url 'tracker:report_list' %}" class="inline-flex items-center text-sm text-teal-400 hover:text-teal-300 mt-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+                Back to Reports Dashboard
+            </a>
+        </div>
+        <div>
+            <form action="{% url 'tracker:delete_report' report.id %}" method="post">
+                {% csrf_token %}
+                <button type="submit" class="bg-red-700 text-white font-semibold px-4 py-2 rounded-md hover:bg-red-800" onclick="return confirm('Are you sure you want to permanently delete this report?');">
+                    Delete Report
+                </button>
+            </form>
+        </div>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
+    <div class="space-y-8">
         <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
-            <h2 class="text-xl font-semibold mb-4 text-gray-200 text-center">Grafts Produced</h2>
-            <div class="w-full h-64 mx-auto">
-                <canvas id="producedChart"></canvas>
-            </div>
-            <div class="mt-4 pt-4 border-t border-gray-700">
-                {% include 'tracker/_report_table_partial.html' with data=report.report_data.produced %}
-            </div>
+            <h2 class="text-xl font-semibold mb-4 text-gray-200 text-center">Packaged Grafts Trend</h2>
+            <div class="relative h-96"><canvas id="packagedTrendChart"></canvas></div>
         </div>
 
         <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
-            <h2 class="text-xl font-semibold mb-4 text-gray-200 text-center">Grafts to Irradiation</h2>
-            <div class="w-full h-64 mx-auto">
-                <canvas id="irradiatedChart"></canvas>
-            </div>
-            <div class="mt-4 pt-4 border-t border-gray-700">
-                {% include 'tracker/_report_table_partial.html' with data=report.report_data.irradiated %}
-            </div>
-        </div>
-        
-        <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
-            <h2 class="text-xl font-semibold mb-4 text-gray-200 text-center">Grafts Labeled</h2>
-            <div class="w-full h-64 mx-auto">
-                <canvas id="labeledChart"></canvas>
-            </div>
-            <div class="mt-4 pt-4 border-t border-gray-700">
-                {% include 'tracker/_report_table_partial.html' with data=report.report_data.labeled %}
-            </div>
+            <h2 class="text-xl font-semibold mb-4 text-gray-200 text-center">Labeled Grafts Trend</h2>
+            <div class="relative h-80"><canvas id="labeledTrendChart"></canvas></div>
         </div>
 
+        <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
+            <h2 class="text-xl font-semibold mb-4 text-gray-200 text-center">FPP Inspected Trend</h2>
+            <div class="relative h-80"><canvas id="fppTrendChart"></canvas></div>
+        </div>
     </div>
 </div>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Get the report data from the Django template
     const reportData = {{ report.report_data|safe }};
+    const packagedTrend = reportData.packaged_trend || [];
+    const labeledTrend = reportData.labeled_trend || [];
+    const fppTrend = reportData.fpp_trend || [];
 
-    // A color palette for the charts
-    const chartColors = [
-        '#0d9488', '#059669', '#1d4ed8', '#7c3aed', '#db2777',
-        '#e11d48', '#f97316', '#f59e0b', '#84cc16', '#22d3ee'
-    ];
+    const createTrendChart = (canvasId, chartLabel, data, color) => {
+        const ctx = document.getElementById(canvasId);
+        if (!ctx || !data || data.length === 0) {
+            ctx.parentNode.innerHTML = '<p class="text-center text-gray-500 mt-24">No data available.</p>';
+            return;
+        }
 
-    // Helper function to create a doughnut chart
-    const createDoughnutChart = (canvasId, chartLabel, data) => {
-        const ctx = document.getElementById(canvasId).getContext('2d');
-        
-        const labels = data.map(item => item.product_type);
+        const labels = data.map(item => {
+            const date = new Date(item.month + 'T00:00:00');
+            return date.toLocaleString('default', { month: 'short' }) + '-' + date.getFullYear().toString().substr(-2);
+        });
         const values = data.map(item => item.total);
 
         new Chart(ctx, {
-            type: 'doughnut',
+            type: 'bar',
             data: {
                 labels: labels,
-                datasets: [{
-                    label: chartLabel,
-                    data: values,
-                    backgroundColor: chartColors,
-                    borderColor: '#1f2937', // bg-gray-800
-                    borderWidth: 2,
-                    hoverOffset: 4
-                }]
+                datasets: [{ label: chartLabel, data: values, backgroundColor: color }]
             },
             options: {
-                responsive: true,
                 maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        position: 'bottom',
-                        labels: {
-                            color: '#d1d5db', // text-gray-300
-                            padding: 15,
-                        }
+                scales: {
+                    y: { 
+                        beginAtZero: true, 
+                        ticks: { color: '#9ca3af', padding: 10 }, 
+                        grid: { 
+                            display: true, // Re-enabled grid lines
+                            color: '#4b5563' 
+                        } 
+                    },
+                    x: { 
+                        ticks: { color: '#9ca3af', font: { size: 12 } }, // Slightly larger date font
+                        grid: { display: false } 
                     }
+                },
+                plugins: { 
+                    legend: { display: false },
+                    datalabels: { display: false } // Disabled the number labels on bars
                 }
             }
         });
     };
 
-    // Create a chart for each data set
-    createDoughnutChart('producedChart', 'Total Produced', reportData.produced);
-    createDoughnutChart('irradiatedChart', 'Total to Irradiation', reportData.irradiated);
-    createDoughnutChart('labeledChart', 'Total Labeled', reportData.labeled);
+    // Create all three separate trend charts
+    createTrendChart('packagedTrendChart', 'Total Packaged', packagedTrend, 'rgba(20, 184, 166, 0.6)');
+    createTrendChart('labeledTrendChart', 'Total Labeled', labeledTrend, 'rgba(59, 130, 246, 0.6)');
+    createTrendChart('fppTrendChart', 'Total FPP Inspected', fppTrend, 'rgba(139, 92, 246, 0.6)');
 });
 </script>
 {% endblock %}

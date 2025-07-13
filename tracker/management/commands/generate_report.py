@@ -1,61 +1,50 @@
+import datetime
 from django.core.management.base import BaseCommand
 from django.db.models import Sum
+from django.db.models.functions import TruncMonth
 from tracker.models import Lot, SubLot, Report
 
 class Command(BaseCommand):
-    help = 'Generates the monthly production report and saves it to the database.'
-
-    def add_arguments(self, parser):
-        parser.add_argument('month', type=int, help='The month number (1-12)')
-        parser.add_argument('year', type=int, help='The year (e.g., 2025)')
+    help = 'Generates a summary report for all labeled and packaged grafts, grouped by month.'
 
     def handle(self, *args, **options):
-        month, year = options['month'], options['year']
-        self.stdout.write(f"--- Generating report for {month}/{year} ---")
+        self.stdout.write("--- Generating Full History Trend Report ---")
 
-        # 1. Grafts Produced (based on Lot's packaged_date)
-        grafts_produced = Lot.objects.filter(
-            packaged_date__year=year,
-            packaged_date__month=month
-        ).values('product_type').annotate(total=Sum('quantity')).order_by('product_type')
+        today = datetime.date.today()
 
-        # 2. Grafts Sent to Irradiation (based on Lot's irr_out_date)
-        grafts_irradiated = Lot.objects.filter(
-            irr_out_date__year=year,
-            irr_out_date__month=month
-        ).values('product_type').annotate(total=Sum('quantity')).order_by('product_type')
-        
         # --- THIS IS THE FIX ---
-        # 3. Grafts Labeled (based on SubLot's labeled_date)
-        # This query now starts from the SubLot model and looks up to the parent Lot
-        grafts_labeled = SubLot.objects.filter(
-            labeled_date__year=year,
-            labeled_date__month=month
-        ).values('parent_lot__product_type').annotate(total=Sum('parent_lot__quantity')).order_by('parent_lot__product_type')
-        # --------------------
+        # The queries no longer filter for only the last 12 months.
+        # They now look at all data in your database.
 
-        # To make the data consistent, we rename the key for the labeled grafts
-        # from 'parent_lot__product_type' to 'product_type'
-        grafts_labeled_cleaned = [
-            {'product_type': item['parent_lot__product_type'], 'total': item['total']} 
-            for item in grafts_labeled
-        ]
+        # Query 1: Packaged Grafts (from Lot model)
+        packaged_by_month = Lot.objects.filter(packaged_date__isnull=False)\
+            .annotate(month=TruncMonth('packaged_date')).values('month')\
+            .annotate(total=Sum('quantity')).order_by('month')
 
-        # Compile the final data into a dictionary
+        # Query 2: Labeled Grafts (from SubLot model)
+        labeled_by_month = SubLot.objects.filter(labeled_date__isnull=False)\
+            .annotate(month=TruncMonth('labeled_date')).values('month')\
+            .annotate(total=Sum('final_quantity')).order_by('month')
+
+        # Query 3: FPP Inspected Grafts (from Lot model)
+        fpp_by_month = Lot.objects.filter(fpp_date__isnull=False)\
+            .annotate(month=TruncMonth('fpp_date')).values('month')\
+            .annotate(total=Sum('quantity')).order_by('month')
+        # --- END FIX ---
+
+        # Format the data for JSON
         report_data = {
-            'produced': list(grafts_produced),
-            'irradiated': list(grafts_irradiated),
-            'labeled': grafts_labeled_cleaned,
+            'packaged_trend': [{'month': item['month'].strftime('%Y-%m-%d'), 'total': item['total']} for item in packaged_by_month],
+            'labeled_trend': [{'month': item['month'].strftime('%Y-%m-%d'), 'total': item['total']} for item in labeled_by_month],
+            'fpp_trend': [{'month': item['month'].strftime('%Y-%m-%d'), 'total': item['total']} for item in fpp_by_month],
         }
 
-        # Save the report to the database
-        report_obj, created = Report.objects.update_or_create(
-            month=month,
-            year=year,
-            defaults={'report_data': report_data}
+        # Always save to a single report object with a fixed ID
+        Report.objects.update_or_create(
+            id=1, 
+            defaults={
+                'month': today.month, 'year': today.year,
+                'report_data': report_data
+            }
         )
-
-        if created:
-            self.stdout.write(self.style.SUCCESS(f"Successfully created new report for {month}/{year}."))
-        else:
-            self.stdout.write(self.style.SUCCESS(f"Successfully updated existing report for {month}/{year}."))
+        self.stdout.write(self.style.SUCCESS("Successfully created/updated the Full History Trend Report."))

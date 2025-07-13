@@ -7,7 +7,7 @@ class Donor(models.Model):
         return self.donor_id
 
 class Lot(models.Model):
-    """Represents the PRIMARY lot (e.g., CRT999999-DCM)."""
+    """Represents a single lot with all of its data."""
     DATA_SOURCE_CHOICES = [
         ('PRIMARY_SYNC', 'Primary Sync'),
         ('PLACEHOLDER', 'Placeholder'),
@@ -16,17 +16,20 @@ class Lot(models.Model):
     donor = models.ForeignKey(Donor, related_name='lots', on_delete=models.CASCADE)
     lot_id = models.CharField(max_length=255, unique=True)
     product_type = models.CharField(max_length=100, blank=True)
+    
+    # --- All Data Fields ---
     packaged_by = models.CharField(max_length=255, blank=True, null=True)
     packaged_date = models.DateField(blank=True, null=True)
     quantity = models.IntegerField(blank=True, null=True)
+    fpp_date = models.DateField(blank=True, null=True) # <-- This was missing
     irr_out_date = models.DateField(blank=True, null=True)
-
+    
     data_source = models.CharField(
         max_length=20, 
         choices=DATA_SOURCE_CHOICES, 
         default='PRIMARY_SYNC'
     )
-    
+
     def __str__(self):
         return self.lot_id
 
