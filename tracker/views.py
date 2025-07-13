@@ -370,11 +370,11 @@ def sync_with_monday(request):
                     
                     # --- Robust Product Type Parsing ---
                     product_type_str = None
-                    for col in item['column_values']:
-                        # This line was using the old, undefined variable 'product_type_col'
-                        # Change it to use 'product_family_col'
-                        if col['id'] == product_family_col: #<-- THE FIX
-                            product_type_str = col.get('text')
+                for col in item['column_values']:
+                    # This line was using the old, undefined variable 'product_type_col'
+                    # Change it to use 'product_family_col'
+                    if col['id'] == product_family_col: #<-- THE FIX
+                        product_type_str = col.get('text')
                     
                     # Fallback: If the column was empty, parse from the lot name
                     if not product_type_str and len(full_lot_id.split('-')) > 1:
@@ -466,10 +466,31 @@ def batch_document_upload(request):
     
     return JsonResponse({'error': 'Invalid request'}, status=400)
 
+def interactive_report_data(request):
+    product_type = request.GET.get('product_type', 'all')
+    year = request.GET.get('year', 'all')
+
+    queryset = Lot.objects.all()
+
+    # Filter by selected product type if specified
+    if product_type != 'all':
+        queryset = queryset.filter(product_type=product_type)
+
+    # Filter by selected year using fpp_date
+    if year != 'all':
+        queryset = queryset.filter(fpp_date__year=year)
+
+    total_grafts = queryset.aggregate(total=Sum('quantity'))['total'] or 0
+    total_lots = queryset.count()
+
+    return JsonResponse({
+        'total_grafts': total_grafts,
+        'total_lots': total_lots,
+    })
+
 @login_required
 def report_list(request):
     if request.method == 'POST':
-        # This correctly calls your monthly report generator
         try:
             call_command('generate_report')
             messages.success(request, "Successfully updated the monthly report data.")
@@ -477,33 +498,47 @@ def report_list(request):
             messages.error(request, f"Failed to generate report: {e}")
         return redirect('tracker:report_list')
 
-    # --- NEW: Get data for the filter dropdowns ---
+    # --- Dropdown Filters ---
     all_product_types = Lot.objects.values_list('product_type', flat=True).distinct().order_by('product_type')
-    
     current_year = datetime.now().year
     years = range(current_year - 5, current_year + 1)
-    # ---
-    
-    # Calculate the data for all three summary charts for the main dashboard
-    packaged_summary_data = Lot.objects.values('product_type').annotate(total=Sum('quantity')).order_by('-total')
-    
-    labeled_summary_query = SubLot.objects.values('parent_lot__product_type').annotate(total=Sum('final_quantity')).order_by('-total')
-    labeled_summary_cleaned = [{'product_type': item['parent_lot__product_type'], 'total': item['total']} for item in labeled_summary_query if item['parent_lot__product_type']]
-    
-    fpp_summary_data = Lot.objects.filter(fpp_date__isnull=False).values('product_type').annotate(total=Sum('quantity')).order_by('-total')
-    # --- END FIX ---
 
-    # Get the list of generated monthly reports to show at the bottom
+    # --- Chart Data ---
+    packaged_summary_data = Lot.objects.values('product_type').annotate(total=Sum('quantity')).order_by('-total')
+
+    labeled_summary_query = SubLot.objects.values('parent_lot__product_type').annotate(total=Sum('final_quantity')).order_by('-total')
+    labeled_summary_cleaned = [
+        {'product_type': item['parent_lot__product_type'], 'total': item['total']}
+        for item in labeled_summary_query if item['parent_lot__product_type']
+    ]
+
+    fpp_summary_data = Lot.objects.filter(fpp_date__isnull=False).values('product_type').annotate(total=Sum('quantity')).order_by('-total')
+
+    # --- Monthly Grafts from JSON Field in Reports ---
+    monthly_graft_summary = {}
+    for report in Report.objects.all():
+        month = report.month
+        graft_count = report.report_data.get('grafts_handled', 0)
+        monthly_graft_summary[month] = monthly_graft_summary.get(month, 0) + graft_count
+
+    monthly_graft_data = [
+        {'product_type': month, 'total': total}
+        for month, total in sorted(monthly_graft_summary.items())
+    ]
+
+    # --- All Report Entries for the Table ---
     reports = Report.objects.all().order_by('-year', '-month')
-    
+
     context = {
         'reports': reports,
         'packaged_chart_data': json.dumps(list(packaged_summary_data)),
         'labeled_chart_data': json.dumps(labeled_summary_cleaned),
         'fpp_chart_data': json.dumps(list(fpp_summary_data)),
-        'all_product_types': all_product_types,  # Pass the product
-        'years': years,  # Pass the years for the filter dropdown
+        'monthly_graft_data': json.dumps(monthly_graft_data),
+        'all_product_types': all_product_types,
+        'years': years,
     }
+
     return render(request, 'tracker/report_list.html', context)
 
 @login_required
@@ -535,38 +570,6 @@ def report_detail(request, report_id):
         'fpp_chart_data': json.dumps(list(fpp_summary_data)), # Add new data
     }
     return render(request, 'tracker/report_detail.html', context)
-
-@login_required
-def interactive_report_data(request):
-    """
-    This special view is called by JavaScript. It calculates and returns
-    the data needed for the interactive chart based on the user's filters.
-    """
-    product_type = request.GET.get('product_type')
-    year = request.GET.get('year')
-
-    # Start with all lots
-    queryset = Lot.objects.all()
-
-    # Apply filters if they are provided and not 'all'
-    if product_type and product_type != 'all':
-        queryset = queryset.filter(product_type=product_type)
-    
-    if year and year != 'all':
-        queryset = queryset.filter(packaged_date__year=year)
-
-    # Calculate totals
-    result = queryset.aggregate(
-        total_grafts=Sum('quantity'),
-        total_lots=Count('id')
-    )
-
-    # Return the data as a JSON response
-    return JsonResponse({
-        'total_grafts': result['total_grafts'] or 0,
-        'total_lots': result['total_lots'] or 0,
-    })
-
 
 @user_passes_test(lambda u: u.is_staff)
 def delete_report(request, report_id):

@@ -2,6 +2,8 @@
 {% block title %}Reports Dashboard{% endblock %}
 
 {% block content %}
+{{ monthly_graft_data }}
+
 <div class="max-w-7xl mx-auto p-6">
     <div class="flex justify-between items-center mb-8">
         <h1 class="text-3xl font-bold text-gray-100">Reports Dashboard</h1>
@@ -82,64 +84,113 @@
 </div>
 
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    // --- THIS IS THE FIX ---
-    // Wrap the template tags in single quotes to ensure it's always a valid string
+document.addEventListener('DOMContentLoaded', function () {
+    // --- Parse chart data from template context ---
     const packagedData = JSON.parse('{{ packaged_chart_data|default:"[]"|safe }}');
     const labeledData = JSON.parse('{{ labeled_chart_data|default:"[]"|safe }}');
     const fppData = JSON.parse('{{ fpp_chart_data|default:"[]"|safe }}');
-    // ----------------------
+    const monthlyData = JSON.parse('{{ monthly_graft_data|default:"[]"|safe }}');
 
-    // Helper function to create a bar chart
+    // 👀 Debug monthly data
+    console.log('Monthly Grafts Chart Data:', monthlyData);
+
+    // --- Chart rendering helper ---
     const createSummaryChart = (canvasId, chartLabel, data, color) => {
         const ctx = document.getElementById(canvasId);
-        if (!ctx || !data || data.length === 0) {
-            ctx.parentNode.innerHTML = '<p class="text-center text-gray-500 mt-24">No data available.</p>';
+        if (!ctx || !data || data.length === 0 || !data.some(item => item.total > 0)) {
+            if (ctx) {
+                ctx.parentNode.innerHTML = '<p class="text-center text-gray-500 mt-24">No meaningful data to display.</p>';
+            }
             return;
         }
+
         const labels = data.map(item => item.product_type);
         const values = data.map(item => item.total);
+
         new Chart(ctx, {
             type: 'bar',
-            data: { labels: labels, datasets: [{ label: chartLabel, data: values, backgroundColor: color }] },
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: chartLabel,
+                    data: values,
+                    backgroundColor: color
+                }]
+            },
             options: {
                 maintainAspectRatio: false,
                 responsive: true,
                 scales: {
-                    y: { beginAtZero: true, ticks: { color: '#9ca3af' }, grid: { color: '#4b5563' } },
-                    x: { ticks: { color: '#9ca3af' }, grid: { display: false } }
+                    y: {
+                        beginAtZero: true,
+                        ticks: { color: '#9ca3af' },
+                        grid: { color: '#4b5563' }
+                    },
+                    x: {
+                        ticks: { color: '#9ca3af' },
+                        grid: { display: false }
+                    }
                 },
-                plugins: { legend: { display: false } }
+                plugins: {
+                    legend: { display: false }
+                }
             }
         });
     };
 
+    // --- Render charts ---
     createSummaryChart('packagedChart', 'Total Packaged', packagedData, 'rgba(20, 184, 166, 0.6)');
     createSummaryChart('labeledChart', 'Total Labeled', labeledData, 'rgba(59, 130, 246, 0.6)');
     createSummaryChart('fppChart', 'Total FPP Inspected', fppData, 'rgba(139, 92, 246, 0.6)');
+    createSummaryChart('monthlyGraftsChart', 'Monthly Grafts', monthlyData, 'rgba(234, 88, 12, 0.6)');
 
-    // --- Logic for the Interactive Chart ---
+    // --- Interactive Filtered Report Chart ---
     const interactiveCtx = document.getElementById('interactiveChart').getContext('2d');
     let interactiveChart;
 
     const updateInteractiveChart = (graftData, lotData) => {
-        if (interactiveChart) { interactiveChart.destroy(); }
+        if (interactiveChart) interactiveChart.destroy();
+
         interactiveChart = new Chart(interactiveCtx, {
             type: 'bar',
             data: {
                 labels: ['Filtered Result'],
                 datasets: [
-                    { label: 'Total Grafts', data: [graftData], backgroundColor: 'rgba(234, 179, 8, 0.6)', yAxisID: 'yGrafts' },
-                    { label: 'Total Lots', data: [lotData], backgroundColor: 'rgba(168, 85, 247, 0.6)', yAxisID: 'yLots' }
+                    {
+                        label: 'Total Grafts',
+                        data: [graftData],
+                        backgroundColor: 'rgba(234, 179, 8, 0.6)',
+                        yAxisID: 'yGrafts'
+                    },
+                    {
+                        label: 'Total Lots',
+                        data: [lotData],
+                        backgroundColor: 'rgba(168, 85, 247, 0.6)',
+                        yAxisID: 'yLots'
+                    }
                 ]
             },
             options: {
                 maintainAspectRatio: false,
                 scales: {
-                    yGrafts: { type: 'linear', position: 'left', beginAtZero: true, ticks: { color: '#9ca3af' }, grid: { color: '#4b5563' } },
-                    yLots: { type: 'linear', position: 'right', beginAtZero: true, ticks: { color: '#9ca3af' }, grid: { display: false } }
+                    yGrafts: {
+                        type: 'linear',
+                        position: 'left',
+                        beginAtZero: true,
+                        ticks: { color: '#9ca3af' },
+                        grid: { color: '#4b5563' }
+                    },
+                    yLots: {
+                        type: 'linear',
+                        position: 'right',
+                        beginAtZero: true,
+                        ticks: { color: '#9ca3af' },
+                        grid: { display: false }
+                    }
                 },
-                plugins: { legend: { labels: { color: '#d1d5db' } } }
+                plugins: {
+                    legend: { labels: { color: '#d1d5db' } }
+                }
             }
         });
     };
@@ -148,16 +199,22 @@ document.addEventListener('DOMContentLoaded', function() {
         const productType = document.getElementById('product_type_filter').value;
         const year = document.getElementById('year_filter').value;
         const url = `{% url 'tracker:interactive_report_data' %}?product_type=${productType}&year=${year}`;
-        
-        fetch(url).then(response => response.json()).then(data => {
-            updateInteractiveChart(data.total_grafts, data.total_lots);
-        });
+
+        fetch(url)
+            .then(response => response.json())
+            .then(data => {
+                updateInteractiveChart(data.total_grafts, data.total_lots);
+            })
+            .catch(error => {
+                console.error('Failed to fetch interactive data:', error);
+            });
     };
 
     document.getElementById('product_type_filter').addEventListener('change', fetchInteractiveData);
     document.getElementById('year_filter').addEventListener('change', fetchInteractiveData);
-    
-    fetchInteractiveData(); // Load initial data
+
+    fetchInteractiveData(); // Initial load
 });
 </script>
+
 {% endblock %}
