@@ -41,9 +41,16 @@
     </div>
 </div>
 
+{{ report.report_data|json_script:"report-data-json" }}
+
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const reportData = {{ report.report_data|safe }};
+    // --- THIS IS THE FIX ---
+    // Safely get the JSON data from the new script tag
+    const reportDataElement = document.getElementById('report-data-json');
+    const reportData = JSON.parse(reportDataElement.textContent);
+    // --- END FIX ---
+
     const packagedTrend = reportData.packaged_trend || [];
     const labeledTrend = reportData.labeled_trend || [];
     const fppTrend = reportData.fpp_trend || [];
@@ -69,23 +76,13 @@ document.addEventListener('DOMContentLoaded', function() {
             },
             options: {
                 maintainAspectRatio: false,
+                responsive: true,
                 scales: {
-                    y: { 
-                        beginAtZero: true, 
-                        ticks: { color: '#9ca3af', padding: 10 }, 
-                        grid: { 
-                            display: true, // Re-enabled grid lines
-                            color: '#4b5563' 
-                        } 
-                    },
-                    x: { 
-                        ticks: { color: '#9ca3af', font: { size: 12 } }, // Slightly larger date font
-                        grid: { display: false } 
-                    }
+                    y: { beginAtZero: true, ticks: { color: '#9ca3af' }, grid: { color: '#4b5563' } },
+                    x: { ticks: { color: '#9ca3af' }, font: { size: 12 } }
                 },
                 plugins: { 
-                    legend: { display: false },
-                    datalabels: { display: false } // Disabled the number labels on bars
+                    legend: { display: false }
                 }
             }
         });
