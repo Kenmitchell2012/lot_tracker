@@ -83,17 +83,13 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    // --- Parse chart data from template context ---
     const packagedData = JSON.parse('{{ packaged_chart_data|default:"[]"|safe }}');
     const labeledData = JSON.parse('{{ labeled_chart_data|default:"[]"|safe }}');
     const fppData = JSON.parse('{{ fpp_chart_data|default:"[]"|safe }}');
     const monthlyData = JSON.parse('{{ monthly_graft_data|default:"[]"|safe }}');
 
-    // 👀 Debug
-    console.log('Monthly Grafts Chart Data:', monthlyData);
-
-    // --- Chart rendering helper for summary charts ---
-    const createSummaryChart = (canvasId, chartLabel, data, color) => {
+    // --- Reusable bar chart function ---
+    const createSummaryChart = (canvasId, chartLabel, data, color, labelKey = 'label') => {
         const ctx = document.getElementById(canvasId);
         if (!ctx || !data || data.length === 0 || !data.some(item => item.total > 0)) {
             if (ctx) {
@@ -102,7 +98,7 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
 
-        const labels = data.map(item => item.label);
+        const labels = data.map(item => item[labelKey]);
         const values = data.map(item => item.total);
 
         new Chart(ctx, {
@@ -136,7 +132,6 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     };
 
-    // --- Monthly Total Grafts Chart (FPP + Labeled) ---
     const createMonthlyTotalChart = (canvasId, data) => {
         const ctx = document.getElementById(canvasId);
         if (!ctx || !data || data.length === 0) {
@@ -146,7 +141,7 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
 
-        const labels = data.map(item => item.label);  // ✅ Fixed key
+        const labels = data.map(item => item.label);
         const values = data.map(item => item.total);
 
         new Chart(ctx, {
@@ -194,7 +189,7 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     };
 
-    // --- Interactive Filtered Report Chart ---
+    // --- Interactive Chart ---
     const interactiveCtx = document.getElementById('interactiveChart').getContext('2d');
     let interactiveChart;
 
@@ -260,16 +255,16 @@ document.addEventListener('DOMContentLoaded', function () {
             });
     };
 
-    // --- Initial Chart Renders ---
-    createSummaryChart('packagedChart', 'Total Packaged', packagedData, 'rgba(20, 184, 166, 0.6)');
-    createSummaryChart('labeledChart', 'Total Labeled', labeledData, 'rgba(59, 130, 246, 0.6)');
-    createSummaryChart('fppChart', 'Total FPP Inspected', fppData, 'rgba(139, 92, 246, 0.6)');
+    // --- Render Charts ---
+    createSummaryChart('packagedChart', 'Total Packaged', packagedData, 'rgba(20, 184, 166, 0.6)', 'product_type');
+    createSummaryChart('labeledChart', 'Total Labeled', labeledData, 'rgba(59, 130, 246, 0.6)', 'product_type');
+    createSummaryChart('fppChart', 'Total FPP Inspected', fppData, 'rgba(139, 92, 246, 0.6)', 'product_type');
     createMonthlyTotalChart('monthlyGraftsChart', monthlyData);
 
-    // --- Interactive Chart Filters ---
+    // --- Filter listeners ---
     document.getElementById('product_type_filter').addEventListener('change', fetchInteractiveData);
     document.getElementById('year_filter').addEventListener('change', fetchInteractiveData);
-    fetchInteractiveData(); // Initial load
+    fetchInteractiveData(); // Load initial
 });
 </script>
 {% endblock %}
