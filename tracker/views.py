@@ -17,6 +17,14 @@ from django.contrib.auth import login, authenticate
 from django.shortcuts import render, redirect
 from .forms import DocumentForm # <-- Import the new form
 from django.db.models import Sum, Case, When, IntegerField
+from django.db.models.functions import TruncMonth
+from django.utils.dateformat import DateFormat
+from collections import defaultdict
+from dateutil.relativedelta import relativedelta
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.timezone import now   
+
 
 
 # admin imports
@@ -488,6 +496,9 @@ def interactive_report_data(request):
         'total_lots': total_lots,
     })
 
+from collections import OrderedDict
+from datetime import date
+
 @login_required
 def report_list(request):
     if request.method == 'POST':
@@ -503,32 +514,79 @@ def report_list(request):
     current_year = datetime.now().year
     years = range(current_year - 5, current_year + 1)
 
-    # --- Chart Data ---
-    packaged_summary_data = Lot.objects.values('product_type').annotate(total=Sum('quantity')).order_by('-total')
+    def subtract_months(dt, months):
+        """Helper function to subtract months from a date."""
+        year = dt.year
+        month = dt.month - months
+        while month <= 0:
+            month += 12
+            year -= 1
+        return date(year, month, 1)
 
-    labeled_summary_query = SubLot.objects.values('parent_lot__product_type').annotate(total=Sum('final_quantity')).order_by('-total')
+    # --- Monthly Labels ---
+    today = now().date().replace(day=1)
+    full_months = OrderedDict()
+
+    for i in range(12):
+        month_date = subtract_months(today, 11 - i)
+        label = month_date.strftime('%b %Y')  # Consistent format
+        full_months[label] = {
+            'label': label,
+            'total': 0
+        }
+
+    # --- Chart 1: Packaged Grafts ---
+    packaged_summary_data = Lot.objects.filter(packaged_date__isnull=False) \
+        .values('product_type') \
+        .annotate(total=Sum('quantity')) \
+        .order_by('-total')
+
+    # --- Chart 2: Labeled Grafts ---
+    labeled_summary_query = SubLot.objects.filter(labeled_date__isnull=False) \
+        .values('parent_lot__product_type') \
+        .annotate(total=Sum('final_quantity')) \
+        .order_by('-total')
+
     labeled_summary_cleaned = [
         {'product_type': item['parent_lot__product_type'], 'total': item['total']}
         for item in labeled_summary_query if item['parent_lot__product_type']
     ]
 
-    fpp_summary_data = Lot.objects.filter(fpp_date__isnull=False).values('product_type').annotate(total=Sum('quantity')).order_by('-total')
+    # --- Chart 3: FPP Inspected Grafts ---
+    fpp_summary_data = Lot.objects.filter(fpp_date__isnull=False) \
+        .values('product_type') \
+        .annotate(total=Sum('quantity')) \
+        .order_by('-total')
 
-    # --- Monthly Grafts from JSON Field in Reports ---
-    monthly_graft_summary = {}
-    for report in Report.objects.all():
-        month = report.month
-        graft_count = report.report_data.get('grafts_handled', 0)
-        monthly_graft_summary[month] = monthly_graft_summary.get(month, 0) + graft_count
+    # --- Chart 4: Monthly Grafts Handled by PROD/QC/QA ---
+    twelve_months_ago = subtract_months(today, 12)
 
-    monthly_graft_data = [
-        {'product_type': month, 'total': total}
-        for month, total in sorted(monthly_graft_summary.items())
-    ]
+    fpp_by_month = Lot.objects.filter(fpp_date__isnull=False, fpp_date__gte=twelve_months_ago) \
+        .annotate(month=TruncMonth('fpp_date')) \
+        .values('month') \
+        .annotate(total=Sum('quantity'))
 
-    # --- All Report Entries for the Table ---
+    labeled_by_month = SubLot.objects.filter(labeled_date__isnull=False, labeled_date__gte=twelve_months_ago) \
+        .annotate(month=TruncMonth('labeled_date')) \
+        .values('month') \
+        .annotate(total=Sum('final_quantity'))
+
+    for item in fpp_by_month:
+        label = item['month'].strftime('%b %Y')
+        if label in full_months:
+            full_months[label]['total'] += item['total'] or 0
+
+    for item in labeled_by_month:
+        label = item['month'].strftime('%b %Y')
+        if label in full_months:
+            full_months[label]['total'] += item['total'] or 0
+
+    monthly_graft_data = list(full_months.values())
+
+    # --- All Reports for Table ---
     reports = Report.objects.all().order_by('-year', '-month')
 
+    # --- Context ---
     context = {
         'reports': reports,
         'packaged_chart_data': json.dumps(list(packaged_summary_data)),

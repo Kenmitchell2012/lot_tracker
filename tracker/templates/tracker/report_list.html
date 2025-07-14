@@ -2,8 +2,6 @@
 {% block title %}Reports Dashboard{% endblock %}
 
 {% block content %}
-{{ monthly_graft_data }}
-
 <div class="max-w-7xl mx-auto p-6">
     <div class="flex justify-between items-center mb-8">
         <h1 class="text-3xl font-bold text-gray-100">Reports Dashboard</h1>
@@ -25,7 +23,7 @@
         </div>
     </div>
 
-    <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700 mb-8">
+    <div class="relative h-[350px] overflow-hidden bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700 mb-8">
         <h2 class="text-xl font-semibold mb-4 text-gray-200">Monthly Grafts Handled by PROD/QC/QA</h2>
         <canvas id="monthlyGraftsChart" height="150"></canvas>
     </div>
@@ -91,10 +89,10 @@ document.addEventListener('DOMContentLoaded', function () {
     const fppData = JSON.parse('{{ fpp_chart_data|default:"[]"|safe }}');
     const monthlyData = JSON.parse('{{ monthly_graft_data|default:"[]"|safe }}');
 
-    // 👀 Debug monthly data
+    // 👀 Debug
     console.log('Monthly Grafts Chart Data:', monthlyData);
 
-    // --- Chart rendering helper ---
+    // --- Chart rendering helper for summary charts ---
     const createSummaryChart = (canvasId, chartLabel, data, color) => {
         const ctx = document.getElementById(canvasId);
         if (!ctx || !data || data.length === 0 || !data.some(item => item.total > 0)) {
@@ -104,7 +102,7 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
 
-        const labels = data.map(item => item.product_type);
+        const labels = data.map(item => item.label);
         const values = data.map(item => item.total);
 
         new Chart(ctx, {
@@ -138,11 +136,63 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     };
 
-    // --- Render charts ---
-    createSummaryChart('packagedChart', 'Total Packaged', packagedData, 'rgba(20, 184, 166, 0.6)');
-    createSummaryChart('labeledChart', 'Total Labeled', labeledData, 'rgba(59, 130, 246, 0.6)');
-    createSummaryChart('fppChart', 'Total FPP Inspected', fppData, 'rgba(139, 92, 246, 0.6)');
-    createSummaryChart('monthlyGraftsChart', 'Monthly Grafts', monthlyData, 'rgba(234, 88, 12, 0.6)');
+    // --- Monthly Total Grafts Chart (FPP + Labeled) ---
+    const createMonthlyTotalChart = (canvasId, data) => {
+        const ctx = document.getElementById(canvasId);
+        if (!ctx || !data || data.length === 0) {
+            if (ctx) {
+                ctx.parentNode.innerHTML = '<p class="text-center text-gray-500 mt-24">No meaningful data to display.</p>';
+            }
+            return;
+        }
+
+        const labels = data.map(item => item.label);  // ✅ Fixed key
+        const values = data.map(item => item.total);
+
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Total Grafts Handled',
+                        data: values,
+                        backgroundColor: 'rgba(37, 99, 235, 0.7)',
+                        borderColor: 'rgba(37, 99, 235, 1)',
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Trend',
+                        data: values,
+                        type: 'line',
+                        borderColor: 'rgba(255, 255, 255, 0.5)',
+                        borderDash: [5, 5],
+                        fill: false,
+                        tension: 0.3,
+                        pointRadius: 0
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { labels: { color: '#d1d5db' } }
+                },
+                scales: {
+                    x: {
+                        ticks: { color: '#9ca3af' },
+                        grid: { display: false }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        ticks: { color: '#9ca3af' },
+                        grid: { color: '#4b5563' }
+                    }
+                }
+            }
+        });
+    };
 
     // --- Interactive Filtered Report Chart ---
     const interactiveCtx = document.getElementById('interactiveChart').getContext('2d');
@@ -210,11 +260,16 @@ document.addEventListener('DOMContentLoaded', function () {
             });
     };
 
+    // --- Initial Chart Renders ---
+    createSummaryChart('packagedChart', 'Total Packaged', packagedData, 'rgba(20, 184, 166, 0.6)');
+    createSummaryChart('labeledChart', 'Total Labeled', labeledData, 'rgba(59, 130, 246, 0.6)');
+    createSummaryChart('fppChart', 'Total FPP Inspected', fppData, 'rgba(139, 92, 246, 0.6)');
+    createMonthlyTotalChart('monthlyGraftsChart', monthlyData);
+
+    // --- Interactive Chart Filters ---
     document.getElementById('product_type_filter').addEventListener('change', fetchInteractiveData);
     document.getElementById('year_filter').addEventListener('change', fetchInteractiveData);
-
     fetchInteractiveData(); // Initial load
 });
 </script>
-
 {% endblock %}
