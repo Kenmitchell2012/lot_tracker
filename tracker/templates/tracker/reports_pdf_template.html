@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+
+{% block title %}Sub-Lot: {{ sub_lot.sub_lot_id }}{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto p-6">
+    <h1>📄 All Reports</h1>
+    {% for report in reports %}
+        <div class="report">
+            <strong>Report ID:</strong> {{ report.id }}<br>
+            <strong>Date Generated:</strong> {{ report.generated_at|date:"Y-m-d" }}<br>
+            <!-- Add more fields as needed -->
+        </div>
+    {% empty %}
+        <p>No reports available.</p>
+    {% endfor %}
+</div>
+{% endblock %}

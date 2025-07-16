@@ -6,7 +6,7 @@ from django.contrib import messages
 from django.conf import settings
 from .models import Donor, Lot, Document, Event, SyncLog, ActivityLog, Report, SubLot
 from django.utils import timezone
-from datetime import datetime
+from datetime import datetime, timedelta
 from django.core.paginator import Paginator
 from django.db.models import Count, Q, Sum
 from django.contrib.auth.decorators import login_required
@@ -23,7 +23,9 @@ from collections import defaultdict
 from dateutil.relativedelta import relativedelta
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-from django.utils.timezone import now   
+from django.utils.timezone import now
+from django.template.loader import render_to_string
+import tempfile
 
 
 
@@ -40,6 +42,11 @@ from django.views.decorators.csrf import csrf_exempt
 
 # Setup logger
 logger = logging.getLogger(__name__)
+
+
+# Set rolling 12-month window
+today = now().date()
+one_year_ago = today - timedelta(days=365)
 
 def signup(request):
     if request.method == 'POST':
@@ -369,22 +376,22 @@ def sync_with_monday(request):
                     break
 
                 for item in items:
+                    # Debugging output to see the raw item data
+                    print("Raw Monday Item:", item)
+
                     full_lot_id = item.get('name')
                     if not full_lot_id:
                         continue
 
                     donor_id_str = full_lot_id.split('-')[0].strip()
                     donor_object, _ = Donor.objects.get_or_create(donor_id=donor_id_str)
-                    
+
                     # --- Robust Product Type Parsing ---
                     product_type_str = None
-                for col in item['column_values']:
-                    # This line was using the old, undefined variable 'product_type_col'
-                    # Change it to use 'product_family_col'
-                    if col['id'] == product_family_col: #<-- THE FIX
-                        product_type_str = col.get('text')
-                    
-                    # Fallback: If the column was empty, parse from the lot name
+                    for col in item['column_values']:
+                        if col['id'] == product_family_col:
+                            product_type_str = col.get('text')
+
                     if not product_type_str and len(full_lot_id.split('-')) > 1:
                         product_type_str = full_lot_id.split('-')[1].strip()
                     # --- End Parsing ---
@@ -395,7 +402,7 @@ def sync_with_monday(request):
                         defaults={
                             'donor': donor_object,
                             'product_type': product_type_str if product_type_str else "",
-                            'data_source': 'PRIMARY_SYNC' # Mark as a full record
+                            'data_source': 'PRIMARY_SYNC'  # Mark as a full record
                         }
                     )
 
@@ -405,14 +412,34 @@ def sync_with_monday(request):
                         if col['id'] == packaged_by_col:
                             lot_object.packaged_by = col_text
                         elif col['id'] == packaged_date_col:
-                            lot_object.packaged_date = col_text if col_text else None
+                            if col_text:
+                                try:
+                                    lot_object.packaged_date = datetime.strptime(col_text, '%Y-%m-%d').date()
+                                except ValueError:
+                                    lot_object.packaged_date = None
+                            else:
+                                lot_object.packaged_date = None
                         elif col['id'] == quantity_col:
                             lot_object.quantity = int(col_text) if col_text and col_text.isdigit() else None
                         elif col['id'] == irr_out_col:
-                            lot_object.irr_out_date = col_text if col_text else None
+                            if col_text:
+                                try:
+                                    lot_object.irr_out_date = datetime.strptime(col_text, '%Y-%m-%d').date()
+                                except ValueError:
+                                    lot_object.irr_out_date = None
+                            else:
+                                lot_object.irr_out_date = None
                         elif col['id'] == fpp_date_col:
-                            lot_object.fpp_date = col_text if col_text else None
-                    
+                            if col_text:
+                                try:
+                                    lot_object.fpp_date = datetime.strptime(col_text, '%Y-%m-%d').date()
+                                except ValueError:
+                                    lot_object.fpp_date = None
+                            else:
+                                lot_object.fpp_date = None
+                    # Debugging output to see the final lot object before saving
+                    print(f"Saving Lot {full_lot_id}: qty={lot_object.quantity}, fpp_date={lot_object.fpp_date}")
+
                     lot_object.save()
                     items_synced += 1
 
@@ -474,9 +501,10 @@ def batch_document_upload(request):
     
     return JsonResponse({'error': 'Invalid request'}, status=400)
 
-def interactive_report_data(request):
+def interactive_report_data(request): 
     product_type = request.GET.get('product_type', 'all')
     year = request.GET.get('year', 'all')
+    month = request.GET.get('month', 'all')
 
     queryset = Lot.objects.all()
 
@@ -487,6 +515,10 @@ def interactive_report_data(request):
     # Filter by selected year using fpp_date
     if year != 'all':
         queryset = queryset.filter(fpp_date__year=year)
+
+    # Filter by selected month using fpp_date
+    if month != 'all':
+        queryset = queryset.filter(fpp_date__month=month)
 
     total_grafts = queryset.aggregate(total=Sum('quantity'))['total'] or 0
     total_lots = queryset.count()
@@ -501,6 +533,20 @@ from datetime import date
 
 @login_required
 def report_list(request):
+    months = [
+        {'num': '01', 'name': 'January'},
+        {'num': '02', 'name': 'February'},
+        {'num': '03', 'name': 'March'},
+        {'num': '04', 'name': 'April'},
+        {'num': '05', 'name': 'May'},
+        {'num': '06', 'name': 'June'},
+        {'num': '07', 'name': 'July'},
+        {'num': '08', 'name': 'August'},
+        {'num': '09', 'name': 'September'},
+        {'num': '10', 'name': 'October'},
+        {'num': '11', 'name': 'November'},
+        {'num': '12', 'name': 'December'},
+    ]
     if request.method == 'POST':
         try:
             call_command('generate_report')
@@ -509,13 +555,12 @@ def report_list(request):
             messages.error(request, f"Failed to generate report: {e}")
         return redirect('tracker:report_list')
 
-    # --- Dropdown Filters ---
+    # --- Filters for UI ---
     all_product_types = Lot.objects.values_list('product_type', flat=True).distinct().order_by('product_type')
     current_year = datetime.now().year
     years = range(current_year - 5, current_year + 1)
 
     def subtract_months(dt, months):
-        """Helper function to subtract months from a date."""
         year = dt.year
         month = dt.month - months
         while month <= 0:
@@ -523,26 +568,27 @@ def report_list(request):
             year -= 1
         return date(year, month, 1)
 
-    # --- Monthly Labels ---
-    today = now().date().replace(day=1)
+    # --- Labels for 12 months ---
+    today = datetime.today().date().replace(day=1)
     full_months = OrderedDict()
-
     for i in range(12):
         month_date = subtract_months(today, 11 - i)
-        label = month_date.strftime('%b %Y')  # Consistent format
+        label = month_date.strftime('%b %Y')
         full_months[label] = {
             'label': label,
-            'total': 0
+            'fpp_total': 0,
+            'labeled_total': 0
         }
 
-    # --- Chart 1: Packaged Grafts ---
-    packaged_summary_data = Lot.objects.filter(packaged_date__isnull=False) \
+    one_year_ago = subtract_months(today, 12)
+
+    # --- Summary Charts ---
+    packaged_summary_data = Lot.objects.filter(packaged_date__gte=one_year_ago) \
         .values('product_type') \
         .annotate(total=Sum('quantity')) \
         .order_by('-total')
 
-    # --- Chart 2: Labeled Grafts ---
-    labeled_summary_query = SubLot.objects.filter(labeled_date__isnull=False) \
+    labeled_summary_query = SubLot.objects.filter(labeled_date__gte=one_year_ago) \
         .values('parent_lot__product_type') \
         .annotate(total=Sum('final_quantity')) \
         .order_by('-total')
@@ -552,41 +598,88 @@ def report_list(request):
         for item in labeled_summary_query if item['parent_lot__product_type']
     ]
 
-    # --- Chart 3: FPP Inspected Grafts ---
-    fpp_summary_data = Lot.objects.filter(fpp_date__isnull=False) \
+    fpp_summary_data = Lot.objects.filter(fpp_date__gte=one_year_ago) \
         .values('product_type') \
         .annotate(total=Sum('quantity')) \
         .order_by('-total')
 
-    # --- Chart 4: Monthly Grafts Handled by PROD/QC/QA ---
-    twelve_months_ago = subtract_months(today, 12)
-
-    fpp_by_month = Lot.objects.filter(fpp_date__isnull=False, fpp_date__gte=twelve_months_ago) \
+    # --- Monthly Breakdown ---
+    fpp_by_month = Lot.objects.filter(fpp_date__isnull=False, fpp_date__gte=one_year_ago) \
         .annotate(month=TruncMonth('fpp_date')) \
         .values('month') \
         .annotate(total=Sum('quantity'))
 
-    labeled_by_month = SubLot.objects.filter(labeled_date__isnull=False, labeled_date__gte=twelve_months_ago) \
+    labeled_by_month = SubLot.objects.filter(labeled_date__isnull=False, labeled_date__gte=one_year_ago) \
         .annotate(month=TruncMonth('labeled_date')) \
         .values('month') \
         .annotate(total=Sum('final_quantity'))
+    
+    # --- Irradiated Grafts by Month ---
+    irradiated_by_month = Lot.objects.filter(irr_out_date__isnull=False, irr_out_date__gte=one_year_ago) \
+        .annotate(month=TruncMonth('irr_out_date')) \
+        .values('month') \
+        .annotate(total=Sum('quantity'))
 
     for item in fpp_by_month:
         label = item['month'].strftime('%b %Y')
         if label in full_months:
-            full_months[label]['total'] += item['total'] or 0
+            full_months[label]['fpp_total'] = item['total'] or 0
 
     for item in labeled_by_month:
         label = item['month'].strftime('%b %Y')
         if label in full_months:
-            full_months[label]['total'] += item['total'] or 0
+            full_months[label]['labeled_total'] = item['total'] or 0
+
+    for item in irradiated_by_month:
+        label = item['month'].strftime('%b %Y')
+        if label in full_months:
+            full_months[label]['irradiated_total'] = item['total'] or 0
 
     monthly_graft_data = list(full_months.values())
 
-    # --- All Reports for Table ---
+    # --- Exclude CGG/CGP Packaged ---
+    excluded_families_data = (
+        Lot.objects
+        .filter(packaged_date__gte=one_year_ago)
+        .exclude(product_type__in=["CGG", "CGP"])
+        .values('product_type')
+        .annotate(total=Sum('quantity'))
+        .order_by('-total')
+    )
+
+    # --- Table of Existing Reports ---
     reports = Report.objects.all().order_by('-year', '-month')
 
-    # --- Context ---
+    # --- All Chart Cards ---
+    chart_cards = [
+        {
+            "title": "📦 Packaged (Last 12 Months)",
+            "canvas_id": "packagedChart",
+            "color": "rgba(16, 185, 129, 0.8)",
+            "data": json.dumps(list(packaged_summary_data))
+        },
+        {
+            "title": "🏷️ Labeled (Last 12 Months)",
+            "canvas_id": "labeledChart",
+            "color": "rgba(59, 130, 246, 0.8)",
+            "data": json.dumps(labeled_summary_cleaned)
+        },
+        {
+            "title": "🔍 FPP Inspected (Last 12 Months)",
+            "canvas_id": "fppChart",
+            "color": "rgba(168, 85, 247, 0.8)",
+            "data": json.dumps(list(fpp_summary_data))
+        },
+        {
+            "title": "📦 Packaged Grafts (Excl. CGG & CGP)",
+            "canvas_id": "excludedPackagedChart",
+            "color": "rgba(236, 72, 153, 0.8)",  # Tailwind rose-500
+            "data": json.dumps(list(excluded_families_data))
+        },
+
+    ]
+
+    # --- Final Context ---
     context = {
         'reports': reports,
         'packaged_chart_data': json.dumps(list(packaged_summary_data)),
@@ -595,9 +688,26 @@ def report_list(request):
         'monthly_graft_data': json.dumps(monthly_graft_data),
         'all_product_types': all_product_types,
         'years': years,
+        'full_months': full_months,
+        'chart_cards': chart_cards,
+        'months': months,
     }
 
     return render(request, 'tracker/report_list.html', context)
+
+# def export_reports_pdf(request):
+#     reports = Report.objects.all().order_by('-generated_at')  # or however you fetch them
+#     html_string = render_to_string('tracker/reports_pdf_template.html', {'reports': reports})
+
+#     with tempfile.NamedTemporaryFile(delete=True, suffix=".pdf") as temp:
+#         HTML(string=html_string).write_pdf(temp.name)
+
+#         with open(temp.name, 'rb') as f:
+#             pdf = f.read()
+
+#     response = HttpResponse(pdf, content_type='application/pdf')
+#     response['Content-Disposition'] = 'attachment; filename="all_reports.pdf"'
+#     return response
 
 @login_required
 def report_detail(request, report_id):

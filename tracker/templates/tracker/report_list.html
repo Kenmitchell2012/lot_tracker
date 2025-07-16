@@ -1,81 +1,98 @@
 {% extends 'base.html' %}
 {% block title %}Reports Dashboard{% endblock %}
+{% block main_classes %}w-full max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-12 py-8{% endblock %}
 
 {% block content %}
-<div class="max-w-7xl mx-auto p-6">
-    <div class="flex justify-between items-center mb-8">
-        <h1 class="text-3xl font-bold text-gray-100">Reports Dashboard</h1>
-        <a href="{% url 'tracker:admin_dashboard' %}" class="text-sm text-teal-400 hover:underline">&larr; Back to Admin Dashboard</a>
+<div class="w-full">
+    <!-- Header -->
+    <div class="flex justify-between items-center mb-10">
+        <h1 class="text-4xl font-extrabold text-white tracking-tight">📊 Reports Dashboard</h1>
+        <a href="{% url 'tracker:admin_dashboard' %}" class="text-sm text-cyan-400 hover:underline">&larr; Back to Admin Dashboard</a>
+        {% comment %} <a href="{% url 'tracker:export_reports_pdf' %}" class="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg">
+            🧾 Download All Reports (PDF)
+        </a> {% endcomment %}
+
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-        <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
-            <h2 class="text-xl font-semibold mb-4 text-gray-200 text-center">All-Time Packaged Grafts</h2>
-            <div class="relative h-80"><canvas id="packagedChart"></canvas></div>
+    <!-- Summary Charts -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-8 mb-12">
+        {% for card in chart_cards %}
+        <div class="bg-gradient-to-br from-gray-800 to-gray-900 p-8 rounded-2xl shadow-md border border-gray-700">
+            <h2 class="text-xl font-bold text-white mb-6 text-center">{{ card.title }}</h2>
+            <div class="relative h-[26rem]"><canvas id="{{ card.canvas_id }}"></canvas></div>
         </div>
-        <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
-            <h2 class="text-xl font-semibold mb-4 text-gray-200 text-center">All-Time Labeled Grafts</h2>
-            <div class="relative h-80"><canvas id="labeledChart"></canvas></div>
-        </div>
-        <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
-            <h2 class="text-xl font-semibold mb-4 text-gray-200 text-center">All-Time FPP Inspected Grafts</h2>
-            <div class="relative h-80"><canvas id="fppChart"></canvas></div>
-        </div>
+        {% endfor %}
     </div>
 
-    <div class="relative h-[350px] overflow-hidden bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700 mb-8">
-        <h2 class="text-xl font-semibold mb-4 text-gray-200">Monthly Grafts Handled by PROD/QC/QA</h2>
-        <canvas id="monthlyGraftsChart" height="150"></canvas>
+    <!-- Monthly Grafts Chart -->
+    <div class="w-full bg-gradient-to-br from-gray-800 to-gray-900 p-10 rounded-2xl shadow-md border border-gray-700 mb-14">
+        <h2 class="text-xl font-bold text-white mb-6">📅 Monthly Grafts Handled by PROD/QC/QA</h2>
+        <div class="relative h-[32rem]"><canvas id="monthlyGraftsChart"></canvas></div>
     </div>
 
-    <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700 mb-8">
-        <h2 class="text-xl font-semibold mb-4 text-gray-200">Interactive Packaged Report</h2>
-        <div id="interactive-report-form" class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+    <!-- Monthly Irradiated Grafts Chart -->
+    <div class="col-span-full bg-gradient-to-br from-gray-800 to-gray-900 p-6 rounded-2xl shadow-md border border-gray-700 mb-10">
+        <h2 class="text-xl font-bold text-white mb-4">☢️ Monthly Grafts Sent for Irradiation</h2>
+        <div class="relative h-96"><canvas id="irradiatedChart"></canvas></div>
+    </div>
+
+    <!-- Interactive Chart -->
+    <div class="w-full bg-gradient-to-br from-gray-800 to-gray-900 p-10 rounded-2xl shadow-md border border-gray-700 mb-14">
+        <h2 class="text-xl font-bold text-white mb-6">🔍 Interactive Packaged Report</h2>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
             <div>
-                <label for="product_type_filter" class="block text-sm font-medium text-gray-300">Filter by Product Type</label>
-                <select id="product_type_filter" name="product_type" class="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md p-2">
+                <label for="product_type_filter" class="text-sm font-medium text-gray-300">Filter by Product Type</label>
+                <select id="product_type_filter" class="mt-1 w-full bg-gray-700 text-white border-gray-600 rounded-md p-2">
                     <option value="all">All Product Types</option>
-                    {% for p_type in all_product_types %}{% if p_type %}<option value="{{ p_type }}">{{ p_type }}</option>{% endif %}{% endfor %}
+                    {% for p_type in all_product_types %}
+                        {% if p_type %}<option value="{{ p_type }}">{{ p_type }}</option>{% endif %}
+                    {% endfor %}
                 </select>
             </div>
             <div>
-                <label for="year_filter" class="block text-sm font-medium text-gray-300">Filter by Year</label>
-                <select id="year_filter" name="year" class="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md p-2">
+                <label for="year_filter" class="text-sm font-medium text-gray-300">Filter by Year</label>
+                <select id="year_filter" class="mt-1 w-full bg-gray-700 text-white border-gray-600 rounded-md p-2">
                     <option value="all">All Years</option>
                     {% for year in years %}<option value="{{ year }}">{{ year }}</option>{% endfor %}
                 </select>
             </div>
+            <div>
+                <label for="month_filter" class="text-sm font-medium text-gray-300">Filter by Month</label>
+                <select id="month_filter" class="mt-1 w-full bg-gray-700 text-white border-gray-600 rounded-md p-2">
+                    <option value="all">All Months</option>
+                    {% for month in months %}
+                        <option value="{{ month.num }}">{{ month.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
         </div>
-        <div class="relative h-80"><canvas id="interactiveChart"></canvas></div>
+        <div class="relative h-[26rem]"><canvas id="interactiveChart"></canvas></div>
     </div>
 
-    <div class="bg-gray-800 p-6 rounded-lg shadow-md border border-gray-700">
-        <h2 class="text-xl font-semibold mb-4">Detailed 12-Month Trend Reports</h2>
+    <!-- Reports Table -->
+    <div class="w-full bg-gradient-to-br from-gray-800 to-gray-900 p-10 rounded-2xl shadow-md border border-gray-700 mb-20">
+        <h2 class="text-xl font-bold text-white mb-6">📈 Detailed 12-Month Trend Reports</h2>
         <form method="post" action="{% url 'tracker:report_list' %}" class="mb-6">
             {% csrf_token %}
-            <button type="submit" class="bg-purple-600 text-white px-5 py-2 rounded-md hover:bg-purple-700">Generate / Refresh Report</button>
+            <button type="submit" class="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-lg">Generate / Refresh Report</button>
         </form>
-        <ul class="divide-y divide-gray-700">
+        <ul class="divide-y divide-gray-700 space-y-4">
             {% for report in reports %}
-                <li class="py-3 flex justify-between items-center">
+                <li class="py-6 flex justify-between items-center">
                     <div>
-                        <p class="font-medium text-gray-100">12-Month Trend Report</p>
-                        <p class="text-xs text-gray-500">Last Generated: {{ report.generated_at|date:"Y-m-d" }}</p>
+                        <p class="font-medium text-white">12-Month Trend Report</p>
+                        <p class="text-xs text-gray-400">Last Generated: {{ report.generated_at|date:"Y-m-d" }}</p>
                     </div>
-                    <div class="flex space-x-4">
-                        <a href="{% url 'tracker:report_detail' report.id %}" class="bg-teal-600 text-white px-5 py-2 rounded-md hover:bg-teal-700 text-sm">View Details</a>
-                        <form action="{% url 'tracker:delete_report' report.id %}" method="post">
+                    <div class="flex space-x-3">
+                        <a href="{% url 'tracker:report_detail' report.id %}" class="bg-cyan-600 hover:bg-cyan-700 text-white px-5 py-2 rounded-md text-sm">View</a>
+                        <form method="post" action="{% url 'tracker:delete_report' report.id %}" onsubmit="return confirm('Are you sure?');">
                             {% csrf_token %}
-                            <button type="submit"
-                                    class="bg-red-700 text-white px-5 py-2 rounded-md hover:bg-red-800 text-sm"
-                                    onclick="return confirm('Are you sure you want to permanently delete this report?');">
-                                Delete
-                            </button>
+                            <button type="submit" class="bg-red-600 hover:bg-red-700 text-white px-5 py-2 rounded-md text-sm">Delete</button>
                         </form>
                     </div>
                 </li>
             {% empty %}
-                <li class="py-3 text-gray-400">No detailed reports have been generated yet.</li>
+                <li class="py-4 text-gray-400">No reports generated yet.</li>
             {% endfor %}
         </ul>
     </div>
@@ -83,88 +100,95 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    const packagedData = JSON.parse('{{ packaged_chart_data|default:"[]"|safe }}');
-    const labeledData = JSON.parse('{{ labeled_chart_data|default:"[]"|safe }}');
-    const fppData = JSON.parse('{{ fpp_chart_data|default:"[]"|safe }}');
-    const monthlyData = JSON.parse('{{ monthly_graft_data|default:"[]"|safe }}');
+    const chartCards = {{ chart_cards|safe }};
+    const monthlyData = {{ monthly_graft_data|safe }};
 
-    // --- Reusable bar chart function ---
-    const createSummaryChart = (canvasId, chartLabel, data, color, labelKey = 'label') => {
-        const ctx = document.getElementById(canvasId);
-        if (!ctx || !data || data.length === 0 || !data.some(item => item.total > 0)) {
-            if (ctx) {
-                ctx.parentNode.innerHTML = '<p class="text-center text-gray-500 mt-24">No meaningful data to display.</p>';
-            }
-            return;
-        }
+    chartCards.forEach(card => {
+        const ctx = document.getElementById(card.canvas_id);
+        if (ctx) {
+            const data = JSON.parse(card.data);
+            const labels = data.map(item => item.product_type || "Unknown");
+            const values = data.map(item => item.total);
 
-        const labels = data.map(item => item[labelKey]);
-        const values = data.map(item => item.total);
-
-        new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: chartLabel,
-                    data: values,
-                    backgroundColor: color
-                }]
-            },
-            options: {
-                maintainAspectRatio: false,
-                responsive: true,
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        ticks: { color: '#9ca3af' },
-                        grid: { color: '#4b5563' }
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: card.title,
+                        data: values,
+                        backgroundColor: card.color,
+                        borderRadius: 5,
+                        barThickness: 28,
+                        datalabels: {
+                            anchor: 'end',
+                            align: 'end',
+                            color: '#fff',
+                            font: { weight: 'bold' }
+                        }
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        datalabels: {
+                            formatter: Math.round
+                        }
                     },
-                    x: {
-                        ticks: { color: '#9ca3af' },
-                        grid: { display: false }
+                    scales: {
+                        x: {
+                            ticks: { color: '#d1d5db' },
+                            grid: { display: false }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            ticks: { color: '#d1d5db' },
+                            grid: { color: '#374151' }
+                        }
                     }
                 },
-                plugins: {
-                    legend: { display: false }
-                }
-            }
-        });
-    };
-
-    const createMonthlyTotalChart = (canvasId, data) => {
-        const ctx = document.getElementById(canvasId);
-        if (!ctx || !data || data.length === 0) {
-            if (ctx) {
-                ctx.parentNode.innerHTML = '<p class="text-center text-gray-500 mt-24">No meaningful data to display.</p>';
-            }
-            return;
+                plugins: [ChartDataLabels]
+            });
         }
+    });
 
-        const labels = data.map(item => item.label);
-        const values = data.map(item => item.total);
+    // Monthly Graft Chart (FPP vs Labeled w/ totals)
+    const monthlyCtx = document.getElementById('monthlyGraftsChart');
+    if (monthlyCtx) {
+        const labels = monthlyData.map(item => item.label);
+        const fppTotals = monthlyData.map(item => item.fpp_total || 0);
+        const labeledTotals = monthlyData.map(item => item.labeled_total || 0);
 
-        new Chart(ctx, {
+        new Chart(monthlyCtx, {
             type: 'bar',
             data: {
                 labels: labels,
                 datasets: [
                     {
-                        label: 'Total Grafts Handled',
-                        data: values,
-                        backgroundColor: 'rgba(37, 99, 235, 0.7)',
-                        borderColor: 'rgba(37, 99, 235, 1)',
-                        borderWidth: 1
+                        label: 'FPP Grafts',
+                        data: fppTotals,
+                        backgroundColor: 'rgba(139,92,246,0.6)',
+                        borderRadius: 5,
+                        datalabels: {
+                            anchor: 'end',
+                            align: 'end',
+                            color: '#fff',
+                            font: { weight: 'bold' }
+                        }
                     },
                     {
-                        label: 'Trend',
-                        data: values,
-                        type: 'line',
-                        borderColor: 'rgba(255, 255, 255, 0.5)',
-                        borderDash: [5, 5],
-                        fill: false,
-                        tension: 0.3,
-                        pointRadius: 0
+                        label: 'Labeled Grafts',
+                        data: labeledTotals,
+                        backgroundColor: 'rgba(59,130,246,0.6)',
+                        borderRadius: 5,
+                        datalabels: {
+                            anchor: 'end',
+                            align: 'end',
+                            color: '#fff',
+                            font: { weight: 'bold' }
+                        }
                     }
                 ]
             },
@@ -172,99 +196,158 @@ document.addEventListener('DOMContentLoaded', function () {
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
-                    legend: { labels: { color: '#d1d5db' } }
+                    legend: { labels: { color: '#d1d5db' } },
+                    datalabels: {
+                        formatter: Math.round
+                    }
                 },
                 scales: {
                     x: {
-                        ticks: { color: '#9ca3af' },
+                        ticks: { color: '#d1d5db' },
                         grid: { display: false }
                     },
                     y: {
                         beginAtZero: true,
-                        ticks: { color: '#9ca3af' },
-                        grid: { color: '#4b5563' }
+                        ticks: { color: '#d1d5db' },
+                        grid: { color: '#374151' }
                     }
                 }
-            }
+            },
+            plugins: [ChartDataLabels]
         });
-    };
+    }
 
-    // --- Interactive Chart ---
-    const interactiveCtx = document.getElementById('interactiveChart').getContext('2d');
+    // Interactive Chart
     let interactiveChart;
-
-    const updateInteractiveChart = (graftData, lotData) => {
+    const updateInteractiveChart = (grafts, lots) => {
+        const ctx = document.getElementById('interactiveChart').getContext('2d');
         if (interactiveChart) interactiveChart.destroy();
 
-        interactiveChart = new Chart(interactiveCtx, {
+        interactiveChart = new Chart(ctx, {
             type: 'bar',
             data: {
                 labels: ['Filtered Result'],
                 datasets: [
                     {
                         label: 'Total Grafts',
-                        data: [graftData],
+                        data: [grafts],
                         backgroundColor: 'rgba(234, 179, 8, 0.6)',
-                        yAxisID: 'yGrafts'
+                        yAxisID: 'y1',
+                        datalabels: {
+                            anchor: 'end',
+                            align: 'end',
+                            color: '#fff',
+                            font: { weight: 'bold' }
+                        }
                     },
                     {
                         label: 'Total Lots',
-                        data: [lotData],
+                        data: [lots],
                         backgroundColor: 'rgba(168, 85, 247, 0.6)',
-                        yAxisID: 'yLots'
+                        yAxisID: 'y2',
+                        datalabels: {
+                            anchor: 'end',
+                            align: 'end',
+                            color: '#fff',
+                            font: { weight: 'bold' }
+                        }
                     }
                 ]
             },
             options: {
+                responsive: true,
                 maintainAspectRatio: false,
-                scales: {
-                    yGrafts: {
-                        type: 'linear',
-                        position: 'left',
-                        beginAtZero: true,
-                        ticks: { color: '#9ca3af' },
-                        grid: { color: '#4b5563' }
-                    },
-                    yLots: {
-                        type: 'linear',
-                        position: 'right',
-                        beginAtZero: true,
-                        ticks: { color: '#9ca3af' },
-                        grid: { display: false }
+                plugins: {
+                    legend: { labels: { color: '#d1d5db' } },
+                    datalabels: {
+                        formatter: Math.round
                     }
                 },
-                plugins: {
-                    legend: { labels: { color: '#d1d5db' } }
+                scales: {
+                    y1: {
+                        beginAtZero: true,
+                        position: 'left',
+                        ticks: { color: '#d1d5db' },
+                        grid: { color: '#4b5563' }
+                    },
+                    y2: {
+                        beginAtZero: true,
+                        position: 'right',
+                        ticks: { color: '#d1d5db' },
+                        grid: { display: false }
+                    }
                 }
-            }
+            },
+            plugins: [ChartDataLabels]
         });
     };
+
+    // Monthly Irradiated Grafts Chart
+    const irradiatedCtx = document.getElementById('irradiatedChart');
+    if (irradiatedCtx) {
+        const labels = monthlyData.map(item => item.label);
+        const irradiatedTotals = monthlyData.map(item => item.irradiated_total || 0);
+
+        new Chart(irradiatedCtx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Irradiated Grafts',
+                    data: irradiatedTotals,
+                    backgroundColor: 'rgba(239, 68, 68, 0.7)',
+                    borderRadius: 5,
+                    datalabels: {
+                        anchor: 'end',
+                        align: 'end',
+                        color: '#fff',
+                        font: { weight: 'bold' }
+                    }
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { labels: { color: '#d1d5db' } },
+                    datalabels: {
+                        formatter: Math.round
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: { color: '#d1d5db' },
+                        grid: { display: false }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        ticks: { color: '#d1d5db' },
+                        grid: { color: '#374151' }
+                    }
+                }
+            },
+            plugins: [ChartDataLabels]
+        });
+}
 
     const fetchInteractiveData = () => {
         const productType = document.getElementById('product_type_filter').value;
         const year = document.getElementById('year_filter').value;
-        const url = `{% url 'tracker:interactive_report_data' %}?product_type=${productType}&year=${year}`;
+        const month = document.getElementById('month_filter').value;
+
+        const url = `{% url 'tracker:interactive_report_data' %}?product_type=${productType}&year=${year}&month=${month}`;
 
         fetch(url)
-            .then(response => response.json())
+            .then(res => res.json())
             .then(data => {
                 updateInteractiveChart(data.total_grafts, data.total_lots);
-            })
-            .catch(error => {
-                console.error('Failed to fetch interactive data:', error);
             });
     };
 
-    // --- Render Charts ---
-    createSummaryChart('packagedChart', 'Total Packaged', packagedData, 'rgba(20, 184, 166, 0.6)', 'product_type');
-    createSummaryChart('labeledChart', 'Total Labeled', labeledData, 'rgba(59, 130, 246, 0.6)', 'product_type');
-    createSummaryChart('fppChart', 'Total FPP Inspected', fppData, 'rgba(139, 92, 246, 0.6)', 'product_type');
-    createMonthlyTotalChart('monthlyGraftsChart', monthlyData);
-
-    // --- Filter listeners ---
     document.getElementById('product_type_filter').addEventListener('change', fetchInteractiveData);
     document.getElementById('year_filter').addEventListener('change', fetchInteractiveData);
-    fetchInteractiveData(); // Load initial
+    document.getElementById('month_filter').addEventListener('change', fetchInteractiveData);
+    fetchInteractiveData(); // Initial load
 });
 </script>
 {% endblock %}

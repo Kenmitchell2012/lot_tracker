@@ -48,6 +48,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'tracker.apps.TrackerConfig',
+    'django_extensions',  # Useful for debugging and development
 ]
 
 MIDDLEWARE = [

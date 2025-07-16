@@ -29,5 +29,7 @@ urlpatterns = [
     path('reports/labeled-lots/', views.labeled_lot_list, name='labeled_lot_list'),
     path('reports/<int:report_id>/delete/', views.delete_report, name='delete_report'),
     path('reports/interactive-data/', views.interactive_report_data, name='interactive_report_data'),
-    path('sub-lot/<int:sub_lot_id>/', views.sub_lot_detail, name='sub_lot_detail')
+    path('sub-lot/<int:sub_lot_id>/', views.sub_lot_detail, name='sub_lot_detail'),
+    # path('reports/export/pdf/', views.export_reports_pdf, name='export_reports_pdf'),
+
 ]

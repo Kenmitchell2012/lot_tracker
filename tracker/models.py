@@ -21,7 +21,7 @@ class Lot(models.Model):
     packaged_by = models.CharField(max_length=255, blank=True, null=True)
     packaged_date = models.DateField(blank=True, null=True)
     quantity = models.IntegerField(blank=True, null=True)
-    fpp_date = models.DateField(blank=True, null=True) # <-- This was missing
+    fpp_date = models.DateField(blank=True, null=True) 
     irr_out_date = models.DateField(blank=True, null=True)
     
     data_source = models.CharField(
