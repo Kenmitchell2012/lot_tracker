@@ -691,6 +691,8 @@ def report_list(request):
         'full_months': full_months,
         'chart_cards': chart_cards,
         'months': months,
+        'current_year': current_year,
+        'current_month': datetime.now().month
     }
 
     return render(request, 'tracker/report_list.html', context)

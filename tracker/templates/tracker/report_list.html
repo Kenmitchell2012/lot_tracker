@@ -61,7 +61,11 @@
                 <select id="month_filter" class="mt-1 w-full bg-gray-700 text-white border-gray-600 rounded-md p-2">
                     <option value="all">All Months</option>
                     {% for month in months %}
-                        <option value="{{ month.num }}">{{ month.name }}</option>
+                        {% if year|stringformat:"i" == current_year|stringformat:"i" and month.num|stringformat:"i" > current_month %}
+                            {# Skip future months in the current year #}
+                        {% else %}
+                            <option value="{{ month.num }}">{{ month.name }}</option>
+                        {% endif %}
                     {% endfor %}
                 </select>
             </div>
@@ -100,8 +104,30 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+    // --- Static Chart Rendering ---
     const chartCards = {{ chart_cards|safe }};
     const monthlyData = {{ monthly_graft_data|safe }};
+    const productTypeSelect = document.getElementById('product_type_filter');
+    const yearSelect = document.getElementById('year_filter');
+    const monthSelect = document.getElementById('month_filter');
+
+    const currentYear = new Date().getFullYear();
+    const currentMonth = new Date().getMonth() + 1;
+
+    const allMonths = [
+        { num: '01', name: 'January' },
+        { num: '02', name: 'February' },
+        { num: '03', name: 'March' },
+        { num: '04', name: 'April' },
+        { num: '05', name: 'May' },
+        { num: '06', name: 'June' },
+        { num: '07', name: 'July' },
+        { num: '08', name: 'August' },
+        { num: '09', name: 'September' },
+        { num: '10', name: 'October' },
+        { num: '11', name: 'November' },
+        { num: '12', name: 'December' },
+    ];
 
     chartCards.forEach(card => {
         const ctx = document.getElementById(card.canvas_id);
@@ -133,9 +159,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     maintainAspectRatio: false,
                     plugins: {
                         legend: { display: false },
-                        datalabels: {
-                            formatter: Math.round
-                        }
+                        datalabels: { formatter: Math.round }
                     },
                     scales: {
                         x: {
@@ -154,7 +178,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     });
 
-    // Monthly Graft Chart (FPP vs Labeled w/ totals)
+    // --- Monthly Grafts Chart (FPP vs Labeled) ---
     const monthlyCtx = document.getElementById('monthlyGraftsChart');
     if (monthlyCtx) {
         const labels = monthlyData.map(item => item.label);
@@ -197,9 +221,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 maintainAspectRatio: false,
                 plugins: {
                     legend: { labels: { color: '#d1d5db' } },
-                    datalabels: {
-                        formatter: Math.round
-                    }
+                    datalabels: { formatter: Math.round }
                 },
                 scales: {
                     x: {
@@ -217,7 +239,53 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    // Interactive Chart
+    // --- Monthly Irradiated Chart ---
+    const irradiatedCtx = document.getElementById('irradiatedChart');
+    if (irradiatedCtx) {
+        const labels = monthlyData.map(item => item.label);
+        const irradiatedTotals = monthlyData.map(item => item.irradiated_total || 0);
+
+        new Chart(irradiatedCtx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Irradiated Grafts',
+                    data: irradiatedTotals,
+                    backgroundColor: 'rgba(239, 68, 68, 0.7)',
+                    borderRadius: 5,
+                    datalabels: {
+                        anchor: 'end',
+                        align: 'end',
+                        color: '#fff',
+                        font: { weight: 'bold' }
+                    }
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { labels: { color: '#d1d5db' } },
+                    datalabels: { formatter: Math.round }
+                },
+                scales: {
+                    x: {
+                        ticks: { color: '#d1d5db' },
+                        grid: { display: false }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        ticks: { color: '#d1d5db' },
+                        grid: { color: '#374151' }
+                    }
+                }
+            },
+            plugins: [ChartDataLabels]
+        });
+    }
+
+    // --- Interactive Chart Logic ---
     let interactiveChart;
     const updateInteractiveChart = (grafts, lots) => {
         const ctx = document.getElementById('interactiveChart').getContext('2d');
@@ -259,9 +327,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 maintainAspectRatio: false,
                 plugins: {
                     legend: { labels: { color: '#d1d5db' } },
-                    datalabels: {
-                        formatter: Math.round
-                    }
+                    datalabels: { formatter: Math.round }
                 },
                 scales: {
                     y1: {
@@ -282,61 +348,32 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     };
 
-    // Monthly Irradiated Grafts Chart
-    const irradiatedCtx = document.getElementById('irradiatedChart');
-    if (irradiatedCtx) {
-        const labels = monthlyData.map(item => item.label);
-        const irradiatedTotals = monthlyData.map(item => item.irradiated_total || 0);
+    function populateMonths(selectedYear) {
+        const isCurrentYear = parseInt(selectedYear) === currentYear;
+        monthSelect.innerHTML = '';
 
-        new Chart(irradiatedCtx, {
-            type: 'bar',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: 'Irradiated Grafts',
-                    data: irradiatedTotals,
-                    backgroundColor: 'rgba(239, 68, 68, 0.7)',
-                    borderRadius: 5,
-                    datalabels: {
-                        anchor: 'end',
-                        align: 'end',
-                        color: '#fff',
-                        font: { weight: 'bold' }
-                    }
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { labels: { color: '#d1d5db' } },
-                    datalabels: {
-                        formatter: Math.round
-                    }
-                },
-                scales: {
-                    x: {
-                        ticks: { color: '#d1d5db' },
-                        grid: { display: false }
-                    },
-                    y: {
-                        beginAtZero: true,
-                        ticks: { color: '#d1d5db' },
-                        grid: { color: '#374151' }
-                    }
-                }
-            },
-            plugins: [ChartDataLabels]
+        const allOpt = document.createElement('option');
+        allOpt.value = 'all';
+        allOpt.textContent = 'All Months';
+        monthSelect.appendChild(allOpt);
+
+        allMonths.forEach(m => {
+            const monthNum = parseInt(m.num);
+            if (!isCurrentYear || monthNum <= currentMonth) {
+                const opt = document.createElement('option');
+                opt.value = m.num;
+                opt.textContent = m.name;
+                monthSelect.appendChild(opt);
+            }
         });
-}
+    }
 
     const fetchInteractiveData = () => {
-        const productType = document.getElementById('product_type_filter').value;
-        const year = document.getElementById('year_filter').value;
-        const month = document.getElementById('month_filter').value;
+        const productType = productTypeSelect.value;
+        const year = yearSelect.value;
+        const month = monthSelect.value;
 
         const url = `{% url 'tracker:interactive_report_data' %}?product_type=${productType}&year=${year}&month=${month}`;
-
         fetch(url)
             .then(res => res.json())
             .then(data => {
@@ -344,10 +381,17 @@ document.addEventListener('DOMContentLoaded', function () {
             });
     };
 
-    document.getElementById('product_type_filter').addEventListener('change', fetchInteractiveData);
-    document.getElementById('year_filter').addEventListener('change', fetchInteractiveData);
-    document.getElementById('month_filter').addEventListener('change', fetchInteractiveData);
-    fetchInteractiveData(); // Initial load
+    // Initialize months and chart
+    populateMonths(yearSelect.value);
+    fetchInteractiveData();
+
+    // Bind filter events
+    productTypeSelect.addEventListener('change', fetchInteractiveData);
+    yearSelect.addEventListener('change', function () {
+        populateMonths(this.value);
+        fetchInteractiveData();
+    });
+    monthSelect.addEventListener('change', fetchInteractiveData);
 });
 </script>
 {% endblock %}
