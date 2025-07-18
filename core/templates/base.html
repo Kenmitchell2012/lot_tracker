@@ -16,7 +16,7 @@
 <body class="bg-gray-900 text-gray-200 flex flex-col min-h-screen">
     <nav class="sticky top-0 z-50 bg-gray-800 p-6 text-white shadow-lg transition-all duration-300">
         <div class="max-w-7xl mx-auto flex justify-between items-center">
-            <a href="{% url 'tracker:donor_list' %}" class="text-xl font-semibold hover:text-teal-400">Lot History Tracker</a>
+            <a href="{% url 'tracker:command_center' %}" class="text-xl font-semibold hover:text-teal-400">Lot History Tracker</a>
             
             <div class="space-x-6 flex items-center">
                 {% if user.is_authenticated %}
@@ -24,6 +24,7 @@
                         <a href="{% url 'tracker:admin_dashboard' %}" class="hover:text-teal-400">Dashboard</a>
                         <a href="{% url 'tracker:report_list' %}" class="hover:text-teal-400">Reports</a>
                         <a href="{% url 'tracker:labeled_lot_list' %}" class="hover:text-teal-400">Labeled Lots</a>
+                        <a href="{% url 'tracker:donor_list' %}" class="hover:text-teal-400">Donors</a>
                     {% endif %}
                     <span class="text-gray-300">Welcome, {{ user.username }}</span>
                     <form action="{% url 'logout' %}" method="post" class="inline">

@@ -8,7 +8,7 @@ from .models import Donor, Lot, Document, Event, SyncLog, ActivityLog, Report, S
 from django.utils import timezone
 from datetime import datetime, timedelta
 from django.core.paginator import Paginator
-from django.db.models import Count, Q, Sum
+from django.db.models import Count, Q, Sum, Max
 from django.contrib.auth.decorators import login_required
 from .forms import DocumentForm, SignUpForm, LoginForm
 from django.contrib.auth.views import LoginView
@@ -85,6 +85,25 @@ def custom_logout(request):
     logout(request)
     messages.success(request, "You have been successfully logged out.")
     return redirect('login')
+
+@login_required
+def command_center(request):
+    today = datetime.today()
+    this_month = today.month
+    this_year = today.year
+
+    total_donors = Donor.objects.count()
+    total_grafts_month = Lot.objects.filter(fpp_date__year=this_year, fpp_date__month=this_month).aggregate(total=Sum('quantity'))['total'] or 0
+    total_labeled_month = SubLot.objects.filter(labeled_date__year=this_year, labeled_date__month=this_month).aggregate(total=Sum('final_quantity'))['total'] or 0
+    total_irradiated_month = Lot.objects.filter(irr_out_date__year=this_year, irr_out_date__month=this_month).aggregate(total=Sum('quantity'))['total'] or 0
+
+    context = {
+        'total_donors': total_donors,
+        'total_grafts_month': total_grafts_month,
+        'total_labeled_month': total_labeled_month,
+        'total_irradiated_month': total_irradiated_month,
+    }
+    return render(request, 'tracker/command_center.html', context)
 
 @user_passes_test(lambda u: u.is_staff)
 def admin_dashboard(request):
@@ -189,50 +208,53 @@ def clear_new_folder(request):
 
 
 
-# --- Main Views ---
+# --- Main Views ---@login_required
+
 @login_required
 def donor_list(request):
     """
-    Displays a paginated list of all Donors. For each donor on the current
-    page, it calculates the lot counts to display on the card.
+    Displays a paginated list of all Donors.
+    Supports HTMX live search via donor_id.
+    Each donor is annotated with lot stats and latest packaged date.
     """
-    query = request.GET.get('query', '')
+    query = request.GET.get('query', '').strip()
     donor_list_query = Donor.objects.all().order_by('donor_id')
 
     if query:
         donor_list_query = donor_list_query.filter(donor_id__icontains=query)
 
-    total_grafts_data = Lot.objects.aggregate(total=Sum('quantity'))
-    total_grafts = total_grafts_data['total'] or 0
+    # Total grafts from all lots
+    total_grafts = Lot.objects.aggregate(total=Sum('quantity'))['total'] or 0
 
+    # Paginate
     paginator = Paginator(donor_list_query, 24)
     page_number = request.GET.get('page')
     donors_page = paginator.get_page(page_number)
 
-    # --- THIS IS THE FIX ---
-    # The loop that adds the counts now runs for every request,
-    # ensuring the data is ready for both the full page and the HTMX partial.
+    # Annotate donors with custom stats
     for donor in donors_page:
         donor.lot_count = donor.lots.count()
         donor.released_count = donor.lots.filter(irr_out_date__isnull=False).count()
-    # -----------------------
-    
-    # This block now receives the fully prepared donors_page object
-    if 'HX-Request' in request.headers:
-        return render(request, 'tracker/_donor_card_partial.html', {'donors': donors_page})
+        donor.latest_lot_date = donor.lots.aggregate(latest=Max('packaged_date'))['latest']
 
+    # Return just the donor cards for HTMX requests
+    if request.headers.get('HX-Request'):
+        return render(request, 'tracker/_donor_card_partial.html', {
+            'donors': donors_page
+        })
+
+    # Normal full-page render
     try:
         last_sync = SyncLog.objects.latest('last_sync_time')
     except SyncLog.DoesNotExist:
         last_sync = None
 
-    context = {
-        'donors': donors_page, # Pass the paginated donors to the template
-        'query': query, # Pass the search query to the template
-        'last_sync': last_sync, # Pass the last sync log to the template
-        'total_grafts': total_grafts,  # Pass the total grafts count to the template
-    }
-    return render(request, 'tracker/donor_list.html', context)
+    return render(request, 'tracker/donor_list.html', {
+        'donors': donors_page,
+        'query': query,
+        'last_sync': last_sync,
+        'total_grafts': total_grafts,
+    })
 
 
 

@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+{% block title %}Command Center{% endblock %}
+
+{% block main_classes %}w-full max-w-screen-2xl mx-auto px-6 py-10{% endblock %}
+
+{% block content %}
+<h1 class="text-4xl font-extrabold text-white mb-10">🚀 Command Center</h1>
+
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
+    <a href="{% url 'tracker:donor_list' %}" class="bg-gradient-to-br from-indigo-600 to-indigo-800 p-6 rounded-xl shadow-md hover:shadow-xl text-white">
+        <h2 class="text-lg font-semibold">Total Donors</h2>
+        <p class="text-3xl mt-2 font-bold">{{ total_donors }}</p>
+    </a>
+
+    <a href="{% url 'tracker:report_list' %}" class="bg-gradient-to-br from-green-600 to-green-800 p-6 rounded-xl shadow-md hover:shadow-xl text-white">
+        <h2 class="text-lg font-semibold">Monthly Grafts</h2>
+        <p class="text-3xl mt-2 font-bold">{{ total_grafts_month }}</p>
+    </a>
+
+    <a href="{% url 'tracker:labeled_lot_list' %}" class="bg-gradient-to-br from-blue-600 to-blue-800 p-6 rounded-xl shadow-md hover:shadow-xl text-white">
+        <h2 class="text-lg font-semibold">Labeled This Month</h2>
+        <p class="text-3xl mt-2 font-bold">{{ total_labeled_month }}</p>
+    </a>
+
+    <a href="#" class="bg-gradient-to-br from-rose-600 to-rose-800 p-6 rounded-xl shadow-md hover:shadow-xl text-white">
+        <h2 class="text-lg font-semibold">Irradiated This Month</h2>
+        <p class="text-3xl mt-2 font-bold">{{ total_irradiated_month }}</p>
+    </a>
+</div>
+
+<div class="bg-gradient-to-br from-gray-800 to-gray-900 p-8 rounded-2xl shadow-md border border-gray-700 text-white">
+    <h2 class="text-2xl font-semibold mb-4">🕓 Recent Activity</h2>
+    <p>Coming soon: a feed of labeled lots, donor uploads, and FPP submissions.</p>
+</div>
+{% endblock %}
