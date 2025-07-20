@@ -41,6 +41,7 @@ class SubLot(models.Model):
     labeled_date = models.DateField(blank=True, null=True)
     final_quantity = models.IntegerField(blank=True, null=True)
     status = models.CharField(max_length=100, blank=True, null=True)
+    due_date = models.DateField(blank=True, null=True)
 
     def __str__(self):
         return self.sub_lot_id
@@ -67,12 +68,16 @@ class Event(models.Model):
         return f"{self.event_type} for {self.lot.lot_id}"
     
 class SyncLog(models.Model):
-    """A simple model to log the timestamp of the last successful sync."""
-    last_sync_time = models.DateTimeField(auto_now=True)
-    notes = models.CharField(max_length=255, default="Data synced from Monday.com")
+    """Logs the outcome of a data sync operation."""
+    timestamp = models.DateTimeField(auto_now_add=True)
+    # Add null=True to the new fields
+    board_id = models.CharField(max_length=20, null=True)
+    status = models.CharField(max_length=50, null=True)
+    details = models.TextField(blank=True, null=True) # Also good to add null=True here
 
     def __str__(self):
-        return f"Last synced on {self.last_sync_time.strftime('%Y-%m-%d %H:%M:%S')}"
+        # Updated to handle possible null board_id
+        return f"Sync for board {self.board_id or 'N/A'} at {self.timestamp.strftime('%Y-%m-%d %H:%M')}"
 
 
 

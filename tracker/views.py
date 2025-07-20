@@ -21,7 +21,7 @@ from django.db.models.functions import TruncMonth
 from django.utils.dateformat import DateFormat
 from collections import defaultdict
 from dateutil.relativedelta import relativedelta
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.timezone import now
 from django.template.loader import render_to_string
@@ -74,9 +74,14 @@ class CustomLoginView(LoginView):
     redirect_authenticated_user = True
 
     def form_valid(self, form):
-        # This method is called after a user successfully logs in
-        messages.success(self.request, f"Welcome back, {self.request.user.username}!")
-        return super().form_valid(form)
+        # Call the parent method first to complete the login process.
+        response = super().form_valid(form)
+        
+        # Now that the user is logged in, you can access their details.
+        user_name = self.request.user.get_full_name() or self.request.user.username
+        messages.success(self.request, f"Welcome back, {user_name}!")
+        
+        return response
 
 
 # NEW custom logout view to add a success message
@@ -316,25 +321,40 @@ def lot_detail(request, lot_id):
 @login_required
 def labeled_lot_list(request):
     """
-    Displays a paginated list of all SubLot records.
+    Displays a paginated and filterable list of all SubLot records.
+    Returns a partial template if the request is from htmx.
     """
+    # ... (the rest of your filtering logic remains the same)
     query = request.GET.get('query', '')
-    # This query now correctly starts from the SubLot model
-    # and filters for records that have a labeled_date.
-    sub_lots_query = SubLot.objects.all().order_by('-id')
+    status_filter = request.GET.get('status', '')
+    sub_lots_query = SubLot.objects.all()
 
-    # If there is a search query, filter the list
+    if status_filter and status_filter != "All":
+        sub_lots_query = sub_lots_query.filter(status=status_filter)
+
     if query:
         sub_lots_query = sub_lots_query.filter(sub_lot_id__icontains=query)
+
+    sub_lots_query = sub_lots_query.order_by('-id')
 
     paginator = Paginator(sub_lots_query, 25)
     page_number = request.GET.get('page')
     sub_lots_page = paginator.get_page(page_number)
+    
+
+    # Fetches the most recent SyncLog entry using the correct field name
+    last_sync = SyncLog.objects.latest('timestamp') if SyncLog.objects.exists() else None
 
     context = {
         'sub_lots': sub_lots_page,
         'query': query,
+        'status_filter': status_filter,
+        'last_sync': last_sync, # This context variable name is fine to keep
     }
+
+    if request.htmx:
+        return render(request, 'tracker/_lot_list_partial.html', context)
+    
     return render(request, 'tracker/labeled_lot_list.html', context)
 
 @login_required
@@ -351,13 +371,13 @@ def sub_lot_detail(request, sub_lot_id):
 
 def sync_with_monday(request):
     if request.method == 'POST':
-        # --- CONFIGURATION (from your MAIN Lot Tracker Board) ---
+        # --- CONFIGURATION (from MAIN Lot Tracker Board) ---
         API_URL = "https://api.monday.com/v2"
         API_TOKEN = settings.MONDAY_API_TOKEN
         headers = {"Authorization": API_TOKEN}
         board_id = "8120988708"
         
-        # --- Using your real Column IDs ---
+        # --- Column IDs ---
         product_family_col = "label_mkkmvaff"
         packaged_by_col = "dropdown_mkkm4k43"
         packaged_date_col = "date_1_mkkmph2x"
@@ -459,6 +479,8 @@ def sync_with_monday(request):
                                     lot_object.fpp_date = None
                             else:
                                 lot_object.fpp_date = None
+
+                    
                     # Debugging output to see the final lot object before saving
                     print(f"Saving Lot {full_lot_id}: qty={lot_object.quantity}, fpp_date={lot_object.fpp_date}")
 
@@ -480,15 +502,142 @@ def sync_with_monday(request):
     return redirect('tracker:donor_list')
 
 @user_passes_test(lambda u: u.is_staff)
-def sync_labeling_data_view(request):
-    """Triggers the sync_labeling_data management command."""
-    if request.method == 'POST':
-        try:
-            call_command('sync_labeling_data')
-            messages.success(request, "Labeling data sync has been started.")
-        except Exception as e:
-            messages.error(request, f"An error occurred: {e}")
-    return redirect('tracker:donor_list')
+@login_required
+def sync_labeling_data(request):
+    """
+    Fetches data from the Monday.com labeling board, creates or updates
+    SubLot records, and redirects back with a detailed status message.
+    """
+    # --- SECTION 1: CONFIGURATION ---
+    API_URL = "https://api.monday.com/v2"
+    API_TOKEN = settings.MONDAY_API_TOKEN
+    headers = {"Authorization": API_TOKEN, "API-Version": "2023-10"}
+
+    # Monday.com Column IDs
+    labeling_board_id = "9440164519"
+    labeled_by_col = "text5"
+    labeled_date_col = "date43"
+    due_date_col = "po_due_date"
+    final_qty_col = "numbers"
+    chart_status_col = "status"
+
+    # --- SECTION 2: GRAPHQL QUERY ---
+    # This query fetches all the necessary columns
+    query = f'''
+        query ($limit: Int, $cursor: String) {{
+            boards(ids: {labeling_board_id}) {{
+                items_page(limit: $limit, cursor: $cursor) {{
+                    cursor
+                    items {{
+                        name
+                        column_values(ids: [
+                            "{labeled_by_col}", "{labeled_date_col}", "{due_date_col}",
+                            "{final_qty_col}", "{chart_status_col}"
+                        ]) {{
+                            id
+                            text
+                        }}
+                    }}
+                }}
+            }}
+        }}
+    '''
+
+    # --- SECTION 3: SYNC LOGIC ---
+    limit = 100
+    cursor = None
+    created_count, updated_count, skipped_count = 0, 0, 0
+
+    try:
+        while True:
+            variables = {'limit': limit, 'cursor': cursor}
+            data = {'query': query, 'variables': variables}
+
+            response = requests.post(API_URL, headers=headers, json=data)
+            response.raise_for_status()
+            results = response.json()
+
+            if 'errors' in results and results['errors']:
+                error_message = results['errors'][0]['message']
+                messages.error(request, f"Monday.com API Error: {error_message}")
+                return redirect('tracker:labeled_lot_list')
+
+            items_page = results.get('data', {}).get('boards', [{}])[0].get('items_page', {})
+            items = items_page.get('items', [])
+
+            if not items:
+                break
+
+            for item in items:
+                full_sublot_id = item.get('name')
+                if not full_sublot_id:
+                    skipped_count += 1
+                    continue
+
+                # Find or create placeholder parent Lot
+                parts = full_sublot_id.split('-')
+                parent_id = '-'.join(parts[:-1]) if len(parts) > 2 else full_sublot_id
+                try:
+                    parent_lot_obj = Lot.objects.get(lot_id=parent_id)
+                except Lot.DoesNotExist:
+                    donor_id_str = parent_id.split('-')[0]
+                    product_type_str = parent_id.split('-')[1] if len(parent_id.split('-')) > 1 else ''
+                    donor_obj, _ = Donor.objects.get_or_create(donor_id=donor_id_str)
+                    parent_lot_obj, _ = Lot.objects.get_or_create(
+                        lot_id=parent_id,
+                        defaults={'donor': donor_obj, 'product_type': product_type_str, 'data_source': 'PLACEHOLDER'}
+                    )
+
+                # Extract all column values
+                labeled_by, labeled_date_str, due_date_str, final_qty, status = None, None, None, None, None
+                for col in item['column_values']:
+                    col_text = col.get('text')
+                    if col['id'] == labeled_by_col: labeled_by = col_text
+                    elif col['id'] == labeled_date_col: labeled_date_str = col_text
+                    elif col['id'] == due_date_col: due_date_str = col_text
+                    elif col['id'] == final_qty_col: final_qty = int(col_text) if col_text and col_text.isdigit() else None
+                    elif col['id'] == chart_status_col: status = col_text
+
+                # Handle potential date ranges for both dates
+                if labeled_date_str and ' - ' in labeled_date_str:
+                    labeled_date_str = labeled_date_str.split(' - ')[0].strip()
+                if due_date_str and ' - ' in due_date_str:
+                    due_date_str = due_date_str.split(' - ')[0].strip()
+
+                # Create or update the SubLot instance
+                sublot, created = SubLot.objects.update_or_create(
+                    sub_lot_id=full_sublot_id,
+                    defaults={
+                        'parent_lot': parent_lot_obj,
+                        'labeled_by': labeled_by,
+                        'labeled_date': datetime.strptime(labeled_date_str, '%Y-%m-%d').date() if labeled_date_str else None,
+                        'due_date': datetime.strptime(due_date_str, '%Y-%m-%d').date() if due_date_str else None,
+                        'final_quantity': final_qty,
+                        'status': status,
+                    }
+                )
+
+                if created:
+                    created_count += 1
+                else:
+                    updated_count += 1
+
+            cursor = items_page.get('cursor')
+            if not cursor:
+                break
+
+        # --- SECTION 4: LOGGING AND FEEDBACK ---
+        details_str = f"Created: {created_count}, Updated: {updated_count}, Skipped: {skipped_count}."
+        SyncLog.objects.create(board_id=labeling_board_id, status='Success', details=details_str)
+        ActivityLog.objects.create(user=request.user, action_type="Labeling Data Synced", details=f"Labeling data synced from Monday.com. {details_str}")
+        messages.success(request, f"Sync complete! {details_str}")
+
+    except requests.exceptions.RequestException as e:
+        messages.error(request, f"Network error during sync: {e}")
+    except Exception as e:
+        messages.error(request, f"A script error occurred during sync: {e}")
+
+    return redirect('tracker:labeled_lot_list')
 
 # -- receive the uploaded files and save them to your scanned_documents/new/ folder. --
 @csrf_exempt

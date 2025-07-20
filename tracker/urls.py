@@ -25,7 +25,7 @@ urlpatterns = [
     path('dashboard/', views.admin_dashboard, name='admin_dashboard'),
     path('dashboard/upload/', views.batch_document_upload, name='batch_document_upload'),
     path('dashboard/clear/', views.clear_new_folder, name='clear_new_folder'),
-    path('dashboard/sync-labels/', views.sync_labeling_data_view, name='sync_labeling_data'),
+    path('dashboard/sync-labels/', views.sync_labeling_data, name='sync_labeling_data'),
 
     # 🔹 Sync
     path('sync/', views.sync_with_monday, name='sync_with_monday'),

@@ -1,35 +1,68 @@
 {% extends 'base.html' %}
 {% block title %}Command Center{% endblock %}
-
 {% block main_classes %}w-full max-w-screen-2xl mx-auto px-6 py-10{% endblock %}
 
 {% block content %}
-<h1 class="text-4xl font-extrabold text-white mb-10">🚀 Command Center</h1>
+<div class="max-w-6xl mx-auto p-6">
+    <div class="space-y-12">
 
-<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
-    <a href="{% url 'tracker:donor_list' %}" class="bg-gradient-to-br from-indigo-600 to-indigo-800 p-6 rounded-xl shadow-md hover:shadow-xl text-white">
-        <h2 class="text-lg font-semibold">Total Donors</h2>
-        <p class="text-3xl mt-2 font-bold">{{ total_donors }}</p>
-    </a>
+    <!-- Heading -->
+    <h1 class="text-4xl font-extrabold text-white">🚀 Command Center</h1>
 
-    <a href="{% url 'tracker:report_list' %}" class="bg-gradient-to-br from-green-600 to-green-800 p-6 rounded-xl shadow-md hover:shadow-xl text-white">
-        <h2 class="text-lg font-semibold">Monthly Grafts</h2>
-        <p class="text-3xl mt-2 font-bold">{{ total_grafts_month }}</p>
-    </a>
+    <!-- Top Stats -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <!-- Cards -->
+        <a href="{% url 'tracker:donor_list' %}" class="bg-gradient-to-br from-indigo-600 to-indigo-800 p-6 rounded-xl shadow-md hover:shadow-xl text-white">
+            <h2 class="text-lg font-semibold">Total Donors</h2>
+            <p id="donor-total" class="text-3xl mt-2 font-bold">{{ total_donors }}</p>
+        </a>
+        <a href="{% url 'tracker:report_list' %}" class="bg-gradient-to-br from-green-600 to-green-800 p-6 rounded-xl shadow-md hover:shadow-xl text-white">
+            <h2 class="text-lg font-semibold">Monthly Grafts</h2>
+            <p class="text-3xl mt-2 font-bold">{{ total_grafts_month }}</p>
+        </a>
+        <a href="{% url 'tracker:labeled_lot_list' %}" class="bg-gradient-to-br from-blue-600 to-blue-800 p-6 rounded-xl shadow-md hover:shadow-xl text-white">
+            <h2 class="text-lg font-semibold">Labeled This Month</h2>
+            <p id="labeled-total" class="text-3xl mt-2 font-bold">{{ total_labeled_month }}</p>
+        </a>
+        <a href="#" class="bg-gradient-to-br from-rose-600 to-rose-800 p-6 rounded-xl shadow-md hover:shadow-xl text-white">
+            <h2 class="text-lg font-semibold">Irradiated This Month</h2>
+            <p id="irrdiated_total" class="text-3xl mt-2 font-bold">{{ total_irradiated_month }}</p>
+        </a>
+    </div>
 
-    <a href="{% url 'tracker:labeled_lot_list' %}" class="bg-gradient-to-br from-blue-600 to-blue-800 p-6 rounded-xl shadow-md hover:shadow-xl text-white">
-        <h2 class="text-lg font-semibold">Labeled This Month</h2>
-        <p class="text-3xl mt-2 font-bold">{{ total_labeled_month }}</p>
-    </a>
+    <!-- Sync Buttons -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <form method="post" action="{% url 'tracker:sync_with_monday' %}" class="w-full">
+            {% csrf_token %}
+            <button class="w-full py-3 px-4 rounded-lg bg-indigo-700 hover:bg-indigo-800 text-white font-semibold shadow-md">
+                🔄 Sync Donors
+            </button>
+        </form>
+        <form method="post" action="{% url 'tracker:sync_labeling_data' %}" class="w-full">
+            {% csrf_token %}
+            <button class="w-full py-3 px-4 rounded-lg bg-blue-700 hover:bg-blue-800 text-white font-semibold shadow-md">
+                🏷️ Sync Labeling
+            </button>
+        </form>
+    </div>
 
-    <a href="#" class="bg-gradient-to-br from-rose-600 to-rose-800 p-6 rounded-xl shadow-md hover:shadow-xl text-white">
-        <h2 class="text-lg font-semibold">Irradiated This Month</h2>
-        <p class="text-3xl mt-2 font-bold">{{ total_irradiated_month }}</p>
-    </a>
+    <!-- Smart Alerts -->
+    <div class="bg-yellow-900 border border-yellow-700 p-6 rounded-2xl text-yellow-100 shadow-md">
+        <h2 class="text-xl font-bold mb-3">⚠️ Smart Alerts</h2>
+        <ul class="list-disc pl-6 space-y-1 text-sm">
+            <li>3 lots have not been labeled for over 7 days</li>
+            <li>2 donors missing packaged date</li>
+            <li>1 lot pending FPP submission for over 5 days</li>
+        </ul>
+    </div>
+
+    <!-- Recent Activity -->
+    <div class="bg-gradient-to-br from-gray-800 to-gray-900 p-8 rounded-2xl shadow-md border border-gray-700 text-white">
+        <h2 class="text-2xl font-semibold mb-4">🕓 Recent Activity</h2>
+        <p>Coming soon: a feed of labeled lots, donor uploads, and FPP submissions.</p>
+    </div>
+
+</div>
 </div>
 
-<div class="bg-gradient-to-br from-gray-800 to-gray-900 p-8 rounded-2xl shadow-md border border-gray-700 text-white">
-    <h2 class="text-2xl font-semibold mb-4">🕓 Recent Activity</h2>
-    <p>Coming soon: a feed of labeled lots, donor uploads, and FPP submissions.</p>
-</div>
 {% endblock %}

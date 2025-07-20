@@ -3,52 +3,55 @@
 {% block title %}Log In{% endblock %}
 
 {% block content %}
-<div class="max-w-md mx-auto mt-12 p-8 bg-gray-800 rounded-lg shadow-lg border border-gray-700">
-    <h1 class="text-3xl font-bold mb-6 text-center text-gray-100">Log In</h1>
+<div class="flex items-center justify-center min-h-screen bg-gray-900 px-4">
+    
+    <div class="w-full max-w-md p-8 space-y-6 bg-gray-800 rounded-xl shadow-lg border border-gray-700">
+        <h1 class="text-3xl font-bold text-center text-white">Log In</h1>
 
-    <form method="post" action="." class="space-y-6">
-        {% csrf_token %}
+        <form method="post" class="space-y-4">
+            {% csrf_token %}
 
-        <div>
-            <label for="{{ form.username.id_for_label }}" class="block mb-2 text-sm font-medium text-gray-300">Username</label>
-            {{ form.username }}
-        </div>
+            {% if form.non_field_errors %}
+                <div class="p-3 bg-red-900 border border-red-700 text-red-200 rounded-md">
+                    {% for error in form.non_field_errors %}
+                        <p>{{ error }}</p>
+                    {% endfor %}
+                </div>
+            {% endif %}
 
-        <div>
-            <label for="{{ form.password.id_for_label }}" class="block mb-2 text-sm font-medium text-gray-300">Password</label>
-            {{ form.password }}
-        </div>
-        
-        {% if form.errors %}
-            <div class="p-4 bg-red-900 border border-red-700 text-red-200 rounded-md">
-                <p>Your username and password didn't match. Please try again.</p>
+            <div>
+                {{ form.username }}
             </div>
-        {% endif %}
+            <div>
+                {{ form.password }}
+            </div>
 
-        <div>
             <button type="submit" class="w-full flex justify-center bg-teal-600 text-white px-6 py-3 rounded-md font-semibold hover:bg-teal-700 transition-colors duration-300">
                 Log In
             </button>
+        </form>
+
+        <div class="flex items-center">
+            <div class="flex-grow border-t border-gray-600"></div>
+            <span class="flex-shrink mx-4 text-gray-400">OR</span>
+            <div class="flex-grow border-t border-gray-600"></div>
         </div>
-    </form>
 
-    <div class="my-6 flex items-center">
-        <div class="flex-grow border-t border-gray-600"></div>
-        <span class="flex-shrink mx-4 text-gray-400">OR</span>
-        <div class="flex-grow border-t border-gray-600"></div>
-    </div>
-
-    <div>
-        <a href="#" class="w-full flex items-center justify-center bg-white text-gray-700 px-6 py-3 rounded-md font-semibold hover:bg-gray-200 transition-colors duration-300">
-            <svg class="w-5 h-5 mr-3" viewBox="0 0 21 21" xmlns="http://www.w3.org/2000/svg">
-                <title>MS-SymbolLockup</title>
-                <rect x="1" y="1" width="9" height="9" fill="#f25022"/>
-                <rect x="1" y="11" width="9" height="9" fill="#00a4ef"/>
-                <rect x="11" y="1" width="9" height="9" fill="#7fba00"/>
-                <rect x="11" y="11" width="9" height="9" fill="#ffb900"/>
-            </svg>
-            Sign in with Microsoft
-        </a>
+        <div>
+            <a href="#" class="w-full flex items-center justify-center bg-white text-gray-700 px-6 py-3 rounded-md font-semibold hover:bg-gray-200 transition-colors duration-300">
+                <svg class="w-5 h-5 mr-3" viewBox="0 0 21 21" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="1" y="1" width="9" height="9" fill="#f25022"/>
+                    <rect x="1" y="11" width="9" height="9" fill="#00a4ef"/>
+                    <rect x="11" y="1" width="9" height="9" fill="#7fba00"/>
+                    <rect x="11" y="11" width="9" height="9" fill="#ffb900"/>
+                </svg>
+                Sign in with Microsoft
+            </a>
+        </div>
+        
+        <p class="text-sm text-center text-gray-400">
+            Don't have an account? <a href="{% url 'signup' %}" class="font-medium text-teal-400 hover:underline">Sign up</a>
+        </p>
     </div>
 </div>
 {% endblock %}

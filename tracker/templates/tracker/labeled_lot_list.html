@@ -1,4 +1,6 @@
 {% extends 'base.html' %}
+{% load humanize %}
+{% load status_tags %}
 
 {% block title %}Labeled Lots{% endblock %}
 
@@ -8,92 +10,36 @@
         <div>
             <h1 class="text-3xl font-bold text-gray-100">All Labeled Lots</h1>
             <a href="{% url 'tracker:admin_dashboard' %}" class="inline-flex items-center text-sm text-teal-400 hover:text-teal-300 mt-2">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                </svg>
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
                 Back to Dashboard
             </a>
         </div>
-        <div>
-            <form action="{% url 'tracker:sync_labeling_data' %}" method="post" class="inline-block">
+        <div class="flex items-center space-x-4">
+            {% if last_sync %}
+                <p class="text-sm text-gray-400">
+                    Last Sync: <strong>{{ last_sync.timestamp|date:"m-d-Y H:i" }}</strong> 
+                    ({{ last_sync.timestamp|timesince }} ago)
+                </p>
+            {% endif %}
+            <form action="{% url 'tracker:sync_labeling_data' %}" method="post">
                 {% csrf_token %}
-                <button type="submit" class="bg-sky-600 text-white px-4 py-2 rounded-md hover:bg-sky-700">
-                    Sync Labeling Data
-                </button>
+                <button type="submit" class="bg-sky-600 text-white px-4 py-2 rounded-md hover:bg-sky-700">Sync Data</button>
             </form>
         </div>
     </div>
 
-    <form method="get" action="{% url 'tracker:labeled_lot_list' %}" class="mb-6">
-        <div class="flex">
-            <input type="text" name="query" value="{{ query }}" class="w-full px-4 py-2 border rounded-l-md bg-gray-700 border-gray-600 text-gray-200 focus:ring-teal-500 focus:border-teal-500" placeholder="Search by Labeled Lot ID...">
-            <button type="submit" class="bg-teal-600 text-white px-6 py-2 rounded-r-md hover:bg-teal-700">Search</button>
+    <div class="mb-6">
+        <div class="flex flex-wrap items-center gap-2" hx-target="#lot-list-container" hx-swap="outerHTML" hx-push-url="true">
+            <button hx-get="{% url 'tracker:labeled_lot_list' %}?status=All" class="py-2 px-4 rounded-lg {% if not status_filter or status_filter == 'All' %}bg-teal-600 text-white{% else %}bg-gray-700 hover:bg-gray-600 text-white{% endif %}">All</button>
+            <button hx-get="{% url 'tracker:labeled_lot_list' %}?status=REQ+ATTN" class="py-2 px-4 rounded-lg {% if status_filter == 'REQ ATTN' %}bg-red-700 text-white{% else %}bg-red-600 hover:bg-red-500 text-white{% endif %}">REQ ATTN</button>
+            <button hx-get="{% url 'tracker:labeled_lot_list' %}?status=Done" class="py-2 px-4 rounded-lg {% if status_filter == 'Done' %}bg-green-700 text-white{% else %}bg-green-600 hover:bg-green-500 text-white{% endif %}">Done</button>
+            <button hx-get="{% url 'tracker:labeled_lot_list' %}?status=Quality+Release" class="py-2 px-4 rounded-lg {% if status_filter == 'Quality Release' %}bg-teal-700 text-white{% else %}bg-teal-600 hover:bg-teal-500 text-white{% endif %}">Quality Release</button>
+            <button hx-get="{% url 'tracker:labeled_lot_list' %}?status=Tech+Release" class="py-2 px-4 rounded-lg {% if status_filter == 'Tech Release' %}bg-blue-700 text-white{% else %}bg-blue-600 hover:bg-blue-500 text-white{% endif %}">Tech Release</button>
+            <button hx-get="{% url 'tracker:labeled_lot_list' %}?status=Final+Labeling+Release" class="py-2 px-4 rounded-lg {% if status_filter == 'Final Labeling Release' %}bg-pink-700 text-white{% else %}bg-pink-600 hover:bg-pink-500 text-white{% endif %}">Final Labeling Release</button>
         </div>
-    </form>
-
-    <div class="text-right text-gray-400 mb-2">
-        <p>Total Labeled Lots: <strong>{{ sub_lots.paginator.count }}</strong></p>
     </div>
+    
+    {% include 'tracker/_lot_list_partial.html' %}
 
-    <div class="bg-gray-800 shadow-md rounded-lg overflow-hidden border border-gray-700">
-        <table class="min-w-full divide-y divide-gray-700">
-            <thead class="bg-gray-700">
-                <tr>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Labeled Lot ID</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Parent Lot ID</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Labeled Date</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Status</th>
-                </tr>
-            </thead>
-            <tbody class="bg-gray-800 divide-y divide-gray-700">
-                {% for sub_lot in sub_lots %}
-                    <tr class="hover:bg-gray-700">
-                        <td class="px-6 py-4 whitespace-nowrap">
-                            <a href="{% url 'tracker:sub_lot_detail' sub_lot.id %}" class="text-teal-400 hover:text-teal-300 font-medium">
-                                {{ sub_lot.sub_lot_id }}
-                            </a>
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap text-gray-300">
-                            {% if sub_lot.parent_lot %}
-                                <a href="{% url 'tracker:lot_detail' sub_lot.parent_lot.id %}" class="text-gray-400 hover:underline">
-                                    {{ sub_lot.parent_lot.lot_id }}
-                                </a>
-                            {% else %}
-                                N/A
-                            {% endif %}
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap text-gray-300">{{ sub_lot.labeled_date|date:"Y-m-d"|default:"N/A" }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-gray-300">{{ sub_lot.status|default:"N/A" }}</td>
-                    </tr>
-                {% empty %}
-                    <tr>
-                        <td colspan="4" class="px-6 py-4 text-center text-gray-400">No labeled lots found.</td>
-                    </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-
-    {% if sub_lots.paginator.num_pages > 1 %}
-    <div class="mt-6 flex justify-center items-center space-x-1 text-sm">
-        {% if sub_lots.has_previous %}
-            <a href="?page={{ sub_lots.previous_page_number }}{% if query %}&query={{ query }}{% endif %}" class="px-4 py-2 bg-gray-700 rounded-md hover:bg-gray-600 transition-colors duration-200">‹ Previous</a>
-        {% endif %}
-
-        {% for page_num in sub_lots.paginator.page_range %}
-            {% if sub_lots.number == page_num %}
-                <span class="px-4 py-2 bg-blue-600 text-white font-bold rounded-md">{{ page_num }}</span>
-            {% elif page_num > sub_lots.number|add:'-3' and page_num < sub_lots.number|add:'3' %}
-                <a href="?page={{ page_num }}{% if query %}&query={{ query }}{% endif %}" class="px-4 py-2 bg-gray-700 rounded-md hover:bg-gray-600 transition-colors duration-200">{{ page_num }}</a>
-            {% elif page_num == sub_lots.number|add:'-3' or page_num == sub_lots.number|add:'3' %}
-                <span class="px-4 py-2 text-gray-500">...</span>
-            {% endif %}
-        {% endfor %}
-        
-        {% if sub_lots.has_next %}
-            <a href="?page={{ sub_lots.next_page_number }}{% if query %}&query={{ query }}{% endif %}" class="px-4 py-2 bg-gray-700 rounded-md hover:bg-gray-600 transition-colors duration-200">Next ›</a>
-        {% endif %}
-    </div>
-    {% endif %}
 </div>
 {% endblock %}

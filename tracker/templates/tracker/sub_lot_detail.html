@@ -1,37 +1,50 @@
 {% extends 'base.html' %}
+{% load static %}
 
 {% block title %}Sub-Lot: {{ sub_lot.sub_lot_id }}{% endblock %}
 
 {% block content %}
-<div class="max-w-4xl mx-auto p-6">
-    <div class="bg-gray-800 p-6 rounded-lg shadow-lg mb-8 border border-gray-700">
-        <h1 class="text-3xl font-bold text-gray-100">{{ sub_lot.sub_lot_id }}</h1>
-        <p class="text-lg text-teal-400">
-            Child of Lot: 
-            <a href="{% url 'tracker:lot_detail' sub_lot.parent_lot.id %}" class="hover:underline">{{ sub_lot.parent_lot.lot_id }}</a>
+<div class="max-w-5xl mx-auto p-6 space-y-8">
+
+    <!-- Sub-Lot Header -->
+    <div class="bg-gray-900 p-6 rounded-xl shadow-xl border border-teal-600/30">
+        <h1 class="text-4xl font-extrabold text-white tracking-tight">{{ sub_lot.sub_lot_id }}</h1>
+        <p class="mt-2 text-lg text-teal-400">
+            Child of Lot:
+            <a href="{% url 'tracker:lot_detail' sub_lot.parent_lot.id %}" class="underline hover:text-teal-300 transition">
+                {{ sub_lot.parent_lot.lot_id }}
+            </a>
         </p>
     </div>
 
-    <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
-        <h2 class="text-2xl font-semibold mb-4 text-gray-200">Labeling Details</h2>
-        <div class="mt-4 pt-4 border-t border-gray-600 grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+    <!-- Labeling Details -->
+    <div class="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700">
+        <h2 class="text-2xl font-semibold text-white mb-6 flex items-center gap-2">
+            <svg class="w-6 h-6 text-teal-400" fill="none" stroke="currentColor" stroke-width="2"
+                 viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round"
+                 d="M9 17v-6a2 2 0 012-2h6" /></svg>
+            Labeling Details
+        </h2>
+        
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 text-sm">
             <div>
-                <p class="text-gray-400">Labeled By:</p>
-                <p class="font-semibold text-gray-100">{{ sub_lot.labeled_by|default:"N/A" }}</p>
+                <p class="text-gray-400">Labeled By</p>
+                <p class="font-semibold text-white">{{ sub_lot.labeled_by|default:"N/A" }}</p>
             </div>
             <div>
-                <p class="text-gray-400">Labeled Date:</p>
-                <p class="font-semibold text-gray-100">{{ sub_lot.labeled_date|date:"Y-m-d"|default:"N/A" }}</p>
+                <p class="text-gray-400">Labeled Date</p>
+                <p class="font-semibold text-white">{{ sub_lot.labeled_date|date:"d-m-Y" }}</p>
             </div>
             <div>
-                <p class="text-gray-400">Final Quantity:</p>
-                <p class="font-semibold text-gray-100">{{ sub_lot.final_quantity|default:"N/A" }}</p>
+                <p class="text-gray-400">Final Quantity</p>
+                <p class="font-semibold text-white">{{ sub_lot.final_quantity|default:"N/A" }}</p>
             </div>
             <div>
-                <p class="text-gray-400">Chart Status:</p>
-                <p class="font-semibold text-gray-100">{{ sub_lot.status|default:"N/A" }}</p>
+                <p class="text-gray-400">Chart Status</p>
+                <p class="font-semibold text-white">{{ sub_lot.status|default:"N/A" }}</p>
             </div>
         </div>
     </div>
+
 </div>
 {% endblock %}
