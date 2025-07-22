@@ -31,6 +31,7 @@ import tempfile
 
 # admin imports
 import os
+import datetime
 from django.conf import settings
 from django.core.management import call_command
 from django.contrib.auth.decorators import user_passes_test
@@ -93,7 +94,7 @@ def custom_logout(request):
 
 @login_required
 def command_center(request):
-    today = datetime.today()
+    today = datetime.date.today()
     this_month = today.month
     this_year = today.year
 
@@ -250,7 +251,7 @@ def donor_list(request):
 
     # Normal full-page render
     try:
-        last_sync = SyncLog.objects.latest('last_sync_time')
+        last_sync = SyncLog.objects.latest('timestamp')
     except SyncLog.DoesNotExist:
         last_sync = None
 
@@ -324,34 +325,52 @@ def labeled_lot_list(request):
     Displays a paginated and filterable list of all SubLot records.
     Returns a partial template if the request is from htmx.
     """
-    # ... (the rest of your filtering logic remains the same)
+    # KEY: This logic correctly reads the status from either a button click OR the hidden field.
+    status_filter = request.GET.get('status') or request.GET.get('current_status', 'All')
+    
     query = request.GET.get('query', '')
-    status_filter = request.GET.get('status', '')
-    sub_lots_query = SubLot.objects.all()
+    date_filter_type = request.GET.get('date_filter')
+    due_date_specific = request.GET.get('due_date')
 
+    # Start with a single, clean queryset
+    queryset = SubLot.objects.all().order_by('-due_date')
+
+    # Apply all filters sequentially
     if status_filter and status_filter != "All":
-        sub_lots_query = sub_lots_query.filter(status=status_filter)
+        queryset = queryset.filter(status=status_filter)
 
     if query:
-        sub_lots_query = sub_lots_query.filter(sub_lot_id__icontains=query)
+        queryset = queryset.filter(sub_lot_id__icontains=query)
 
-    sub_lots_query = sub_lots_query.order_by('-id')
-
-    paginator = Paginator(sub_lots_query, 25)
+    if date_filter_type == 'today':
+        today = timezone.now().date()
+        queryset = queryset.filter(due_date=today)
+    elif due_date_specific:
+        try:
+            selected_date = datetime.datetime.strptime(due_date_specific, '%Y-%m-%d').date()
+            queryset = queryset.filter(due_date=selected_date)
+        except (ValueError, TypeError):
+            pass
+            
+    # Paginate the final, filtered queryset
+    paginator = Paginator(queryset, 25)
     page_number = request.GET.get('page')
-    sub_lots_page = paginator.get_page(page_number)
+    page_obj = paginator.get_page(page_number)
     
+    # Get the last sync time
+    last_sync = SyncLog.objects.order_by('-timestamp').first()
 
-    # Fetches the most recent SyncLog entry using the correct field name
-    last_sync = SyncLog.objects.latest('timestamp') if SyncLog.objects.exists() else None
-
+    # Build the context with all current filter values to maintain state
     context = {
-        'sub_lots': sub_lots_page,
+        'sub_lots': page_obj,
         'query': query,
         'status_filter': status_filter,
-        'last_sync': last_sync, # This context variable name is fine to keep
+        'last_sync': last_sync,
+        'date_filter_type': date_filter_type,
+        'due_date_specific': due_date_specific,
     }
 
+    # Render the appropriate template
     if request.htmx:
         return render(request, 'tracker/_lot_list_partial.html', context)
     
@@ -705,18 +724,12 @@ from datetime import date
 @login_required
 def report_list(request):
     months = [
-        {'num': '01', 'name': 'January'},
-        {'num': '02', 'name': 'February'},
-        {'num': '03', 'name': 'March'},
-        {'num': '04', 'name': 'April'},
-        {'num': '05', 'name': 'May'},
-        {'num': '06', 'name': 'June'},
-        {'num': '07', 'name': 'July'},
-        {'num': '08', 'name': 'August'},
-        {'num': '09', 'name': 'September'},
-        {'num': '10', 'name': 'October'},
-        {'num': '11', 'name': 'November'},
-        {'num': '12', 'name': 'December'},
+        {'num': '01', 'name': 'January'}, {'num': '02', 'name': 'February'},
+        {'num': '03', 'name': 'March'}, {'num': '04', 'name': 'April'},
+        {'num': '05', 'name': 'May'}, {'num': '06', 'name': 'June'},
+        {'num': '07', 'name': 'July'}, {'num': '08', 'name': 'August'},
+        {'num': '09', 'name': 'September'}, {'num': '10', 'name': 'October'},
+        {'num': '11', 'name': 'November'}, {'num': '12', 'name': 'December'},
     ]
     if request.method == 'POST':
         try:
@@ -726,144 +739,76 @@ def report_list(request):
             messages.error(request, f"Failed to generate report: {e}")
         return redirect('tracker:report_list')
 
+    # --- REFACTORED: Get date information once at the top ---
+    today = datetime.date.today()
+    current_year = today.year
+    current_month = today.month
+    
     # --- Filters for UI ---
     all_product_types = Lot.objects.values_list('product_type', flat=True).distinct().order_by('product_type')
-    current_year = datetime.now().year
     years = range(current_year - 5, current_year + 1)
 
-    def subtract_months(dt, months):
+    def subtract_months(dt, months_to_subtract):
         year = dt.year
-        month = dt.month - months
+        month = dt.month - months_to_subtract
         while month <= 0:
             month += 12
             year -= 1
-        return date(year, month, 1)
+        return datetime.date(year, month, 1)
 
     # --- Labels for 12 months ---
-    today = datetime.today().date().replace(day=1)
+    start_of_this_month = today.replace(day=1)
     full_months = OrderedDict()
     for i in range(12):
-        month_date = subtract_months(today, 11 - i)
+        month_date = subtract_months(start_of_this_month, 11 - i)
         label = month_date.strftime('%b %Y')
-        full_months[label] = {
-            'label': label,
-            'fpp_total': 0,
-            'labeled_total': 0
-        }
+        full_months[label] = {'label': label, 'fpp_total': 0, 'labeled_total': 0, 'irradiated_total': 0}
 
-    one_year_ago = subtract_months(today, 12)
+    one_year_ago = subtract_months(start_of_this_month, 12)
 
-    # --- Summary Charts ---
-    packaged_summary_data = Lot.objects.filter(packaged_date__gte=one_year_ago) \
-        .values('product_type') \
-        .annotate(total=Sum('quantity')) \
-        .order_by('-total')
-
-    labeled_summary_query = SubLot.objects.filter(labeled_date__gte=one_year_ago) \
-        .values('parent_lot__product_type') \
-        .annotate(total=Sum('final_quantity')) \
-        .order_by('-total')
-
-    labeled_summary_cleaned = [
-        {'product_type': item['parent_lot__product_type'], 'total': item['total']}
-        for item in labeled_summary_query if item['parent_lot__product_type']
-    ]
-
-    fpp_summary_data = Lot.objects.filter(fpp_date__gte=one_year_ago) \
-        .values('product_type') \
-        .annotate(total=Sum('quantity')) \
-        .order_by('-total')
-
-    # --- Monthly Breakdown ---
-    fpp_by_month = Lot.objects.filter(fpp_date__isnull=False, fpp_date__gte=one_year_ago) \
-        .annotate(month=TruncMonth('fpp_date')) \
-        .values('month') \
-        .annotate(total=Sum('quantity'))
-
-    labeled_by_month = SubLot.objects.filter(labeled_date__isnull=False, labeled_date__gte=one_year_ago) \
-        .annotate(month=TruncMonth('labeled_date')) \
-        .values('month') \
-        .annotate(total=Sum('final_quantity'))
+    # --- Queries (unchanged) ---
+    packaged_summary_data = Lot.objects.filter(packaged_date__gte=one_year_ago).values('product_type').annotate(total=Sum('quantity')).order_by('-total')
+    labeled_summary_query = SubLot.objects.filter(labeled_date__gte=one_year_ago).values('parent_lot__product_type').annotate(total=Sum('final_quantity')).order_by('-total')
+    labeled_summary_cleaned = [{'product_type': item['parent_lot__product_type'], 'total': item['total']} for item in labeled_summary_query if item['parent_lot__product_type']]
+    fpp_summary_data = Lot.objects.filter(fpp_date__gte=one_year_ago).values('product_type').annotate(total=Sum('quantity')).order_by('-total')
     
-    # --- Irradiated Grafts by Month ---
-    irradiated_by_month = Lot.objects.filter(irr_out_date__isnull=False, irr_out_date__gte=one_year_ago) \
-        .annotate(month=TruncMonth('irr_out_date')) \
-        .values('month') \
-        .annotate(total=Sum('quantity'))
+    fpp_by_month = Lot.objects.filter(fpp_date__isnull=False, fpp_date__gte=one_year_ago).annotate(month=TruncMonth('fpp_date')).values('month').annotate(total=Sum('quantity'))
+    labeled_by_month = SubLot.objects.filter(labeled_date__isnull=False, labeled_date__gte=one_year_ago).annotate(month=TruncMonth('labeled_date')).values('month').annotate(total=Sum('final_quantity'))
+    irradiated_by_month = Lot.objects.filter(irr_out_date__isnull=False, irr_out_date__gte=one_year_ago).annotate(month=TruncMonth('irr_out_date')).values('month').annotate(total=Sum('quantity'))
 
     for item in fpp_by_month:
         label = item['month'].strftime('%b %Y')
-        if label in full_months:
-            full_months[label]['fpp_total'] = item['total'] or 0
-
+        if label in full_months: full_months[label]['fpp_total'] = item['total'] or 0
     for item in labeled_by_month:
         label = item['month'].strftime('%b %Y')
-        if label in full_months:
-            full_months[label]['labeled_total'] = item['total'] or 0
-
+        if label in full_months: full_months[label]['labeled_total'] = item['total'] or 0
     for item in irradiated_by_month:
         label = item['month'].strftime('%b %Y')
-        if label in full_months:
-            full_months[label]['irradiated_total'] = item['total'] or 0
+        if label in full_months: full_months[label]['irradiated_total'] = item['total'] or 0
 
     monthly_graft_data = list(full_months.values())
-
-    # --- Exclude CGG/CGP Packaged ---
-    excluded_families_data = (
-        Lot.objects
-        .filter(packaged_date__gte=one_year_ago)
-        .exclude(product_type__in=["CGG", "CGP"])
-        .values('product_type')
-        .annotate(total=Sum('quantity'))
-        .order_by('-total')
-    )
-
-    # --- Table of Existing Reports ---
+    excluded_families_data = Lot.objects.filter(packaged_date__gte=one_year_ago).exclude(product_type__in=["CGG", "CGP"]).values('product_type').annotate(total=Sum('quantity')).order_by('-total')
     reports = Report.objects.all().order_by('-year', '-month')
 
-    # --- All Chart Cards ---
+    # --- Chart Cards (unchanged) ---
     chart_cards = [
-        {
-            "title": "📦 Packaged (Last 12 Months)",
-            "canvas_id": "packagedChart",
-            "color": "rgba(16, 185, 129, 0.8)",
-            "data": json.dumps(list(packaged_summary_data))
-        },
-        {
-            "title": "🏷️ Labeled (Last 12 Months)",
-            "canvas_id": "labeledChart",
-            "color": "rgba(59, 130, 246, 0.8)",
-            "data": json.dumps(labeled_summary_cleaned)
-        },
-        {
-            "title": "🔍 FPP Inspected (Last 12 Months)",
-            "canvas_id": "fppChart",
-            "color": "rgba(168, 85, 247, 0.8)",
-            "data": json.dumps(list(fpp_summary_data))
-        },
-        {
-            "title": "📦 Packaged Grafts (Excl. CGG & CGP)",
-            "canvas_id": "excludedPackagedChart",
-            "color": "rgba(236, 72, 153, 0.8)",  # Tailwind rose-500
-            "data": json.dumps(list(excluded_families_data))
-        },
-
+        {"title": "📦 Packaged (Last 12 Months)", "canvas_id": "packagedChart", "color": "rgba(16, 185, 129, 0.8)", "data": json.dumps(list(packaged_summary_data))},
+        {"title": "🏷️ Labeled (Last 12 Months)", "canvas_id": "labeledChart", "color": "rgba(59, 130, 246, 0.8)", "data": json.dumps(labeled_summary_cleaned)},
+        {"title": "🔍 FPP Inspected (Last 12 Months)", "canvas_id": "fppChart", "color": "rgba(168, 85, 247, 0.8)", "data": json.dumps(list(fpp_summary_data))},
+        {"title": "📦 Packaged Grafts (Excl. CGG & CGP)", "canvas_id": "excludedPackagedChart", "color": "rgba(236, 72, 153, 0.8)", "data": json.dumps(list(excluded_families_data))},
     ]
 
     # --- Final Context ---
     context = {
         'reports': reports,
-        'packaged_chart_data': json.dumps(list(packaged_summary_data)),
-        'labeled_chart_data': json.dumps(labeled_summary_cleaned),
-        'fpp_chart_data': json.dumps(list(fpp_summary_data)),
+        'chart_cards': chart_cards,
         'monthly_graft_data': json.dumps(monthly_graft_data),
         'all_product_types': all_product_types,
         'years': years,
-        'full_months': full_months,
-        'chart_cards': chart_cards,
         'months': months,
         'current_year': current_year,
-        'current_month': datetime.now().month
+        # FIX: Use the variable defined at the top
+        'current_month': current_month,
     }
 
     return render(request, 'tracker/report_list.html', context)

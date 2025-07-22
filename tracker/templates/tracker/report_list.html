@@ -15,9 +15,9 @@
     </div>
 
     <!-- Summary Charts -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-8 mb-12">
+    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-8 mb-12">
         {% for card in chart_cards %}
-        <div class="bg-gradient-to-br from-gray-800 to-gray-900 p-8 rounded-2xl shadow-md border border-gray-700">
+        <div class="bg-gradient-to-br from-gray-800 to-gray-900 p-6 rounded-2xl shadow-lg border border-gray-700 transition-all duration-300 hover:scale-[1.02] hover:shadow-cyan-500/20">
             <h2 class="text-xl font-bold text-white mb-6 text-center">{{ card.title }}</h2>
             <div class="relative h-[26rem]"><canvas id="{{ card.canvas_id }}"></canvas></div>
         </div>
