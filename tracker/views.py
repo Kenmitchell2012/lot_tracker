@@ -31,7 +31,7 @@ import tempfile
 
 # admin imports
 import os
-import datetime
+from datetime import datetime, date
 from django.conf import settings
 from django.core.management import call_command
 from django.contrib.auth.decorators import user_passes_test
@@ -94,7 +94,7 @@ def custom_logout(request):
 
 @login_required
 def command_center(request):
-    today = datetime.date.today()
+    today = datetime.today().date()
     this_month = today.month
     this_year = today.year
 
@@ -740,7 +740,7 @@ def report_list(request):
         return redirect('tracker:report_list')
 
     # --- REFACTORED: Get date information once at the top ---
-    today = datetime.date.today()
+    today = datetime.today().date()
     current_year = today.year
     current_month = today.month
     
@@ -754,7 +754,8 @@ def report_list(request):
         while month <= 0:
             month += 12
             year -= 1
-        return datetime.date(year, month, 1)
+        # return datetime.date(year, month, 1)
+        return date(year, month, 1)
 
     # --- Labels for 12 months ---
     start_of_this_month = today.replace(day=1)
