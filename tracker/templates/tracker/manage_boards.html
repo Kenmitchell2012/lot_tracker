@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+
+{% block title %}Manage Monthly Boards{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto p-6">
+    <h1 class="text-3xl font-bold text-gray-100 mb-6">Manage & Sync Boards</h1>
+    
+    <div class="bg-gray-800 rounded-lg shadow-lg border border-gray-700">
+        <ul class="divide-y divide-gray-700">
+            {% for board in boards %}
+                <li class="p-4 flex justify-between items-center">
+                    <div>
+                        <p class="font-semibold text-white">{{ board.name }}</p>
+                        <p class="text-sm text-gray-400">Board ID: {{ board.board_id }}</p>
+                        <p class="text-xs text-gray-500">
+                            Last Synced: {{ board.last_synced|date:"m-d-Y H:i"|default:"Never" }}
+                        </p>
+                    </div>
+                    <form action="{% url 'tracker:sync_board' board.board_id %}" method="post">
+                        {% csrf_token %}
+                        <button type="submit" class="bg-teal-600 text-white px-4 py-2 rounded-md hover:bg-teal-700 text-sm">
+                            Sync Now
+                        </button>
+                    </form>
+                </li>
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+{% endblock %}

@@ -25,8 +25,8 @@ urlpatterns = [
     path('dashboard/', views.admin_dashboard, name='admin_dashboard'),
     path('dashboard/upload/', views.batch_document_upload, name='batch_document_upload'),
     path('dashboard/clear/', views.clear_new_folder, name='clear_new_folder'),
-    path('dashboard/sync-labels/', views.sync_labeling_data, name='sync_labeling_data'),
-
+    path('sync-board/<str:board_id>/', views.sync_board, name='sync_board'),
+    path('manage-boards/', views.manage_boards, name='manage_boards'),
     # 🔹 Sync
     path('sync/', views.sync_with_monday, name='sync_with_monday'),
 

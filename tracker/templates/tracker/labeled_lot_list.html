@@ -20,10 +20,19 @@
                     Last Sync: <strong>{{ last_sync.timestamp|date:"m-d-Y H:i" }}</strong> ({{ last_sync.timestamp|timesince }} ago)
                 </p>
             {% endif %}
-            <form action="{% url 'tracker:sync_labeling_data' %}" method="post">
-                {% csrf_token %}
-                <button type="submit" class="bg-sky-600 text-white px-4 py-2 rounded-md hover:bg-sky-700">Sync Data</button>
-            </form>
+            {% if current_board %}
+                <form action="{% url 'tracker:sync_board' current_board.board_id %}" method="post">
+                    {% csrf_token %}
+                    <button type="submit" class="bg-sky-600 text-white px-4 py-2 rounded-md hover:bg-sky-700">
+                        Sync Current Month
+                    </button>
+                </form>
+            {% else %}
+                <p class="text-sm text-gray-500 p-2">
+                    No board has been configured for the current month.
+                </p>
+            {% endif %}
+
         </div>
     </div>
 
@@ -44,7 +53,11 @@
         </div>
 
         <div class="flex flex-wrap items-center gap-3 border-t border-gray-700 pt-4">
-            <button type="submit" name="date_filter" value="today" class="py-2 px-4 rounded-lg {% if date_filter_type == 'today' %}bg-indigo-600 text-white{% else %}bg-gray-700 hover:bg-gray-600 text-white{% endif %}">Due Today</button>
+            <button type="submit" name="date_filter" value="today" 
+                    onclick="document.getElementById('due_date_picker').value = '';"
+                    class="py-2 px-4 rounded-lg {% if date_filter_type == 'today' %}bg-indigo-600 text-white{% else %}bg-gray-700 hover:bg-gray-600 text-white{% endif %}">
+                Due Today
+            </button>
             
             <label for="due_date" class="text-sm text-gray-300">Or pick a day:</label>
             <input type="date" 

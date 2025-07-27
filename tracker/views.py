@@ -4,7 +4,7 @@ import json
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.conf import settings
-from .models import Donor, Lot, Document, Event, SyncLog, ActivityLog, Report, SubLot
+from .models import Donor, Lot, Document, Event, SyncLog, ActivityLog, Report, SubLot, MonthlyBoard
 from django.utils import timezone
 from datetime import datetime, timedelta
 from django.core.paginator import Paginator
@@ -23,10 +23,12 @@ from collections import defaultdict
 from dateutil.relativedelta import relativedelta
 from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
+from django.utils import timezone
 from django.utils.timezone import now
 from django.template.loader import render_to_string
 import tempfile
-
+from .tasks import sync_labeling_data_task
+from background_task.models import Task
 
 
 # admin imports
@@ -37,7 +39,7 @@ from django.core.management import call_command
 from django.contrib.auth.decorators import user_passes_test
 import io
 import shutil
-
+import dateutil.parser
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
@@ -323,54 +325,62 @@ def lot_detail(request, lot_id):
 def labeled_lot_list(request):
     """
     Displays a paginated and filterable list of all SubLot records.
-    Returns a partial template if the request is from htmx.
+    Redirects the 'today' filter to use the main date filter for reliability.
     """
-    # KEY: This logic correctly reads the status from either a button click OR the hidden field.
+    # --- Step 1: Handle the "Due Today" button by redirecting ---
+    if request.GET.get('date_filter') == 'today':
+        q = request.GET.copy()
+        
+        # THIS IS THE FIX: Use timezone.localdate() to get today's date
+        # in your configured timezone ('America/Chicago').
+        q['due_date'] = timezone.localdate().strftime('%Y-%m-%d')
+        
+        if 'date_filter' in q:
+            del q['date_filter']
+            
+        return redirect(f"{request.path}?{q.urlencode()}")
+
+    # --- Step 2: The rest of the view is unchanged and now works correctly ---
     status_filter = request.GET.get('status') or request.GET.get('current_status', 'All')
-    
     query = request.GET.get('query', '')
-    date_filter_type = request.GET.get('date_filter')
     due_date_specific = request.GET.get('due_date')
 
-    # Start with a single, clean queryset
     queryset = SubLot.objects.all().order_by('-due_date')
 
-    # Apply all filters sequentially
     if status_filter and status_filter != "All":
         queryset = queryset.filter(status=status_filter)
-
     if query:
         queryset = queryset.filter(sub_lot_id__icontains=query)
 
-    if date_filter_type == 'today':
-        today = timezone.now().date()
-        queryset = queryset.filter(due_date=today)
-    elif due_date_specific:
+    if due_date_specific:
         try:
-            selected_date = datetime.datetime.strptime(due_date_specific, '%Y-%m-%d').date()
+            selected_date = datetime.strptime(due_date_specific, '%Y-%m-%d').date()
             queryset = queryset.filter(due_date=selected_date)
         except (ValueError, TypeError):
             pass
+
+    # Find the board corresponding to the current local month and year
+    try:
+        local_today = timezone.localdate()
+        current_board = MonthlyBoard.objects.get(month=local_today.month, year=local_today.year)
+    except MonthlyBoard.DoesNotExist:
+        current_board = None
             
-    # Paginate the final, filtered queryset
     paginator = Paginator(queryset, 25)
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
     
-    # Get the last sync time
     last_sync = SyncLog.objects.order_by('-timestamp').first()
 
-    # Build the context with all current filter values to maintain state
     context = {
         'sub_lots': page_obj,
         'query': query,
         'status_filter': status_filter,
         'last_sync': last_sync,
-        'date_filter_type': date_filter_type,
         'due_date_specific': due_date_specific,
+        'current_board': current_board,
     }
 
-    # Render the appropriate template
     if request.htmx:
         return render(request, 'tracker/_lot_list_partial.html', context)
     
@@ -522,18 +532,23 @@ def sync_with_monday(request):
 
 @user_passes_test(lambda u: u.is_staff)
 @login_required
-def sync_labeling_data(request):
+def sync_board(request, board_id):
     """
-    Fetches data from the Monday.com labeling board, creates or updates
-    SubLot records, and redirects back with a detailed status message.
+    A generic view to sync data from any Monday.com board specified by its board_id.
+    It fetches the board's details from the MonthlyBoard model and then runs the sync.
     """
+    # Get the specific board object we need to sync
+    board_to_sync = get_object_or_404(MonthlyBoard, board_id=board_id)
+
     # --- SECTION 1: CONFIGURATION ---
     API_URL = "https://api.monday.com/v2"
     API_TOKEN = settings.MONDAY_API_TOKEN
     headers = {"Authorization": API_TOKEN, "API-Version": "2023-10"}
 
-    # Monday.com Column IDs
-    labeling_board_id = "9440164519"
+    # Use the board_id from the function argument
+    labeling_board_id = board_to_sync.board_id
+    
+    # Column IDs remain the same as they are consistent across your labeling boards
     labeled_by_col = "text5"
     labeled_date_col = "date43"
     due_date_col = "po_due_date"
@@ -541,7 +556,6 @@ def sync_labeling_data(request):
     chart_status_col = "status"
 
     # --- SECTION 2: GRAPHQL QUERY ---
-    # This query fetches all the necessary columns
     query = f'''
         query ($limit: Int, $cursor: String) {{
             boards(ids: {labeling_board_id}) {{
@@ -553,8 +567,7 @@ def sync_labeling_data(request):
                             "{labeled_by_col}", "{labeled_date_col}", "{due_date_col}",
                             "{final_qty_col}", "{chart_status_col}"
                         ]) {{
-                            id
-                            text
+                            id, text
                         }}
                     }}
                 }}
@@ -577,9 +590,7 @@ def sync_labeling_data(request):
             results = response.json()
 
             if 'errors' in results and results['errors']:
-                error_message = results['errors'][0]['message']
-                messages.error(request, f"Monday.com API Error: {error_message}")
-                return redirect('tracker:labeled_lot_list')
+                raise Exception(f"Monday.com API Error: {results['errors'][0]['message']}")
 
             items_page = results.get('data', {}).get('boards', [{}])[0].get('items_page', {})
             items = items_page.get('items', [])
@@ -593,7 +604,6 @@ def sync_labeling_data(request):
                     skipped_count += 1
                     continue
 
-                # Find or create placeholder parent Lot
                 parts = full_sublot_id.split('-')
                 parent_id = '-'.join(parts[:-1]) if len(parts) > 2 else full_sublot_id
                 try:
@@ -607,7 +617,6 @@ def sync_labeling_data(request):
                         defaults={'donor': donor_obj, 'product_type': product_type_str, 'data_source': 'PLACEHOLDER'}
                     )
 
-                # Extract all column values
                 labeled_by, labeled_date_str, due_date_str, final_qty, status = None, None, None, None, None
                 for col in item['column_values']:
                     col_text = col.get('text')
@@ -616,30 +625,28 @@ def sync_labeling_data(request):
                     elif col['id'] == due_date_col: due_date_str = col_text
                     elif col['id'] == final_qty_col: final_qty = int(col_text) if col_text and col_text.isdigit() else None
                     elif col['id'] == chart_status_col: status = col_text
+                
+                due_date_obj = None
+                if due_date_str:
+                    clean_date_str = due_date_str.split(' - ')[0].strip()
+                    due_date_obj = datetime.strptime(clean_date_str, '%Y-%m-%d').date()
 
-                # Handle potential date ranges for both dates
-                if labeled_date_str and ' - ' in labeled_date_str:
-                    labeled_date_str = labeled_date_str.split(' - ')[0].strip()
-                if due_date_str and ' - ' in due_date_str:
-                    due_date_str = due_date_str.split(' - ')[0].strip()
+                labeled_date_obj = None
+                if labeled_date_str:
+                    clean_date_str = labeled_date_str.split(' - ')[0].strip()
+                    labeled_date_obj = datetime.strptime(clean_date_str, '%Y-%m-%d').date()
 
-                # Create or update the SubLot instance
                 sublot, created = SubLot.objects.update_or_create(
                     sub_lot_id=full_sublot_id,
                     defaults={
-                        'parent_lot': parent_lot_obj,
-                        'labeled_by': labeled_by,
-                        'labeled_date': datetime.strptime(labeled_date_str, '%Y-%m-%d').date() if labeled_date_str else None,
-                        'due_date': datetime.strptime(due_date_str, '%Y-%m-%d').date() if due_date_str else None,
-                        'final_quantity': final_qty,
-                        'status': status,
+                        'parent_lot': parent_lot_obj, 'labeled_by': labeled_by,
+                        'labeled_date': labeled_date_obj, 'due_date': due_date_obj,
+                        'final_quantity': final_qty, 'status': status,
                     }
                 )
 
-                if created:
-                    created_count += 1
-                else:
-                    updated_count += 1
+                if created: created_count += 1
+                else: updated_count += 1
 
             cursor = items_page.get('cursor')
             if not cursor:
@@ -647,16 +654,34 @@ def sync_labeling_data(request):
 
         # --- SECTION 4: LOGGING AND FEEDBACK ---
         details_str = f"Created: {created_count}, Updated: {updated_count}, Skipped: {skipped_count}."
+        
+        # Update the board's last synced time
+        board_to_sync.last_synced = timezone.now()
+        board_to_sync.save()
+
+        # Create logs
         SyncLog.objects.create(board_id=labeling_board_id, status='Success', details=details_str)
-        ActivityLog.objects.create(user=request.user, action_type="Labeling Data Synced", details=f"Labeling data synced from Monday.com. {details_str}")
-        messages.success(request, f"Sync complete! {details_str}")
+        ActivityLog.objects.create(user=request.user, action_type="Board Data Synced", details=f"Synced board '{board_to_sync.name}'. {details_str}")
+        
+        messages.success(request, f"Successfully synced board: {board_to_sync.name}")
 
-    except requests.exceptions.RequestException as e:
-        messages.error(request, f"Network error during sync: {e}")
     except Exception as e:
-        messages.error(request, f"A script error occurred during sync: {e}")
+        messages.error(request, f"An error occurred while syncing '{board_to_sync.name}': {e}")
 
-    return redirect('tracker:labeled_lot_list')
+    # Redirect back to the board management page
+    return redirect('tracker:manage_boards')
+
+@user_passes_test(lambda u: u.is_staff)
+@login_required
+def manage_boards(request):
+    if request.method == 'POST':
+        # Logic to handle a form for adding a new MonthlyBoard
+        # For simplicity, you can start by adding them via the Django Admin
+        pass
+
+    all_boards = MonthlyBoard.objects.all()
+    context = {'boards': all_boards}
+    return render(request, 'tracker/manage_boards.html', context)
 
 # -- receive the uploaded files and save them to your scanned_documents/new/ folder. --
 @csrf_exempt

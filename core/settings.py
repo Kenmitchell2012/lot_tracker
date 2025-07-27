@@ -51,6 +51,8 @@ INSTALLED_APPS = [
     'tracker.apps.TrackerConfig',
     'django_extensions',  # Useful for debugging and development
     'django_htmx',  # For HTMX support'django_htmx'
+    'background_task',  # For background task processing
+
 ]
 
 MIDDLEWARE = [
@@ -121,7 +123,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'America/Chicago'
 
 USE_I18N = True
 

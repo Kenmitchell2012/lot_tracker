@@ -107,3 +107,17 @@ class Report(models.Model):
 
     def __str__(self):
         return f"Report for {self.month}/{self.year}"
+    
+class MonthlyBoard(models.Model):
+    board_id = models.CharField(max_length=20, unique=True, help_text="The ID of the Monday.com board.")
+    name = models.CharField(max_length=100, help_text="e.g., 'Labeling - July 2025'")
+    month = models.IntegerField()
+    year = models.IntegerField()
+    last_synced = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-year', '-month']
+        unique_together = ('month', 'year') # Ensure only one board per month/year combo
+
+    def __str__(self):
+        return self.name

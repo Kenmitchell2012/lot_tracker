@@ -155,6 +155,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     }]
                 },
                 options: {
+                    indexAxis: 'y',
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
@@ -162,18 +163,12 @@ document.addEventListener('DOMContentLoaded', function () {
                         datalabels: { formatter: Math.round }
                     },
                     scales: {
-                        x: {
-                            ticks: { color: '#d1d5db' },
-                            grid: { display: false }
-                        },
-                        y: {
-                            beginAtZero: true,
-                            ticks: { color: '#d1d5db' },
-                            grid: { color: '#374151' }
-                        }
-                    }
-                },
-                plugins: [ChartDataLabels]
+                        x: { beginAtZero: true, ticks: { color: '#9ca3af' }, grid: { color: '#4b5563' } },
+                        y: { ticks: { color: '#9ca3af' }, grid: { display: false } }
+
+                    },
+                    plugins: { legend: { display: false}}
+            }
             });
         }
     });
