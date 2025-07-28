@@ -27,8 +27,8 @@ from django.utils import timezone
 from django.utils.timezone import now
 from django.template.loader import render_to_string
 import tempfile
-from .tasks import sync_labeling_data_task
-from background_task.models import Task
+# from .tasks import sync_labeling_data_task
+# from background_task.models import Task
 
 
 # admin imports
@@ -105,11 +105,17 @@ def command_center(request):
     total_labeled_month = SubLot.objects.filter(labeled_date__year=this_year, labeled_date__month=this_month).aggregate(total=Sum('final_quantity'))['total'] or 0
     total_irradiated_month = Lot.objects.filter(irr_out_date__year=this_year, irr_out_date__month=this_month).aggregate(total=Sum('quantity'))['total'] or 0
 
+    try:
+        current_board = MonthlyBoard.objects.get(month=this_month, year=this_year)
+    except MonthlyBoard.DoesNotExist:
+        current_board = None
+
     context = {
         'total_donors': total_donors,
         'total_grafts_month': total_grafts_month,
         'total_labeled_month': total_labeled_month,
         'total_irradiated_month': total_irradiated_month,
+        'current_board': current_board,
     }
     return render(request, 'tracker/command_center.html', context)
 

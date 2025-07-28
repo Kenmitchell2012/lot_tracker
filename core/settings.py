@@ -51,7 +51,7 @@ INSTALLED_APPS = [
     'tracker.apps.TrackerConfig',
     'django_extensions',  # Useful for debugging and development
     'django_htmx',  # For HTMX support'django_htmx'
-    'background_task',  # For background task processing
+    # 'background_task',  # For background task processing
 
 ]
 

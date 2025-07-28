@@ -14,15 +14,9 @@
           Sync from Monday.com
         </button>
       </form>
-      <form action="{% url 'tracker:sync_labeling_data' %}" method="post" class="inline-block">
-        {% csrf_token %}
-        <button type="submit" class="bg-sky-600 text-white px-4 py-2 rounded-md hover:bg-sky-700">
-          Sync Labeling Data
-        </button>
-      </form>
       {% if last_sync %}
         <p class="inline-block align-middle ml-4 text-sm text-gray-400">
-          Last updated: {{ last_sync.last_sync_time|timesince }} ago
+          Last updated: {{ last_sync.timestamp|timesince }} ago
         </p>
       {% endif %}
     </div>
