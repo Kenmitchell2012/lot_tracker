@@ -82,18 +82,35 @@
     </nav>
     <main class="flex-grow">
         <div class="px-4 sm:px-6 lg:px-8 py-6">
-            <div class="messages-wrapper">
+            <div id="toast-container" class="fixed top-4 right-4 z-50 w-full max-w-xs space-y-3">
                 {% if messages %}
-                    <div class="space-y-2 my-4">
-                        {% for message in messages %}
-                            <div class="p-4 rounded-md text-center 
-                                {% if message.tags == 'success' %}bg-green-800 border border-green-700 text-green-100
-                                {% else %}bg-red-800 border border-red-700 text-red-100
-                                {% endif %}" role="alert">
-                                <strong>{{ message }}</strong>
+                    {% for message in messages %}
+                        <div class="toast-message w-full rounded-lg shadow-lg pointer-events-auto ring-1 ring-black ring-opacity-5 overflow-hidden
+                            {% if message.tags == 'success' %} bg-green-800 border border-green-600
+                            {% elif message.tags == 'info' %} bg-sky-800 border border-sky-600
+                            {% elif message.tags == 'warning' %} bg-yellow-800 border border-yellow-600
+                            {% else %} bg-red-800 border border-red-600 {% endif %}
+                            opacity-0 translate-x-full transform transition-all duration-300 ease-in-out"
+                            role="alert">
+                            <div class="p-4">
+                                <div class="flex items-start">
+                                    <div class="ml-3 w-0 flex-1">
+                                        <p class="text-sm font-medium text-gray-100">
+                                            {{ message }}
+                                        </p>
+                                    </div>
+                                    <div class="ml-4 flex-shrink-0 flex">
+                                        <button class="inline-flex rounded-md text-gray-300 hover:text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-700">
+                                            <span class="sr-only">Close</span>
+                                            <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                                                <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
-                        {% endfor %}
-                    </div>
+                        </div>
+                    {% endfor %}
                 {% endif %}
             </div>
         
@@ -121,6 +138,41 @@
                 openIcon.classList.toggle('hidden');
                 closeIcon.classList.toggle('hidden');
             });
+        });
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const toastContainer = document.getElementById('toast-container');
+            if (toastContainer) {
+                const toasts = toastContainer.querySelectorAll('.toast-message');
+
+                toasts.forEach((toast, index) => {
+                    // Function to remove the toast
+                    const removeToast = () => {
+                        toast.classList.add('opacity-0', 'translate-x-full');
+                        // Wait for the transition to finish before removing from the DOM
+                        toast.addEventListener('transitionend', () => {
+                            toast.remove();
+                        });
+                    };
+
+                    // Animate the toast in
+                    setTimeout(() => {
+                        toast.classList.remove('opacity-0', 'translate-x-full');
+                    }, 100 * (index + 1)); // Stagger appearance
+
+                    // Set a timer to automatically remove the toast
+                    const autoRemoveTimeout = setTimeout(removeToast, 5000); // 5 seconds
+
+                    // Add click event to the close button
+                    const closeButton = toast.querySelector('button');
+                    if (closeButton) {
+                        closeButton.addEventListener('click', () => {
+                            clearTimeout(autoRemoveTimeout); // Stop the auto-remove timer
+                            removeToast();
+                        });
+                    }
+                });
+            }
         });
     </script>
 

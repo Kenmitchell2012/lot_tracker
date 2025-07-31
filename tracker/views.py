@@ -251,11 +251,11 @@ def donor_list(request):
         donor.released_count = donor.lots.filter(irr_out_date__isnull=False).count()
         donor.latest_lot_date = donor.lots.aggregate(latest=Max('packaged_date'))['latest']
 
-    # Return just the donor cards for HTMX requests
-    if request.headers.get('HX-Request'):
-        return render(request, 'tracker/_donor_card_partial.html', {
-            'donors': donors_page
-        })
+    # # Return just the donor cards for HTMX requests
+    # if request.headers.get('HX-Request'):
+    #     return render(request, 'tracker/_donor_card_partial.html', {
+    #         'donors': donors_page
+    #     })
 
     # Normal full-page render
     try:
@@ -327,30 +327,24 @@ def lot_detail(request, lot_id):
     }
     return render(request, 'tracker/lot_detail.html', context)
 
+# Full labeled_lot_list view for clarity
+
 @login_required
 def labeled_lot_list(request):
-    """
-    Displays a paginated and filterable list of all SubLot records.
-    Redirects the 'today' filter to use the main date filter for reliability.
-    """
-    # --- Step 1: Handle the "Due Today" button by redirecting ---
+    # This redirect logic for the "today" button is still correct
     if request.GET.get('date_filter') == 'today':
         q = request.GET.copy()
-        
-        # THIS IS THE FIX: Use timezone.localdate() to get today's date
-        # in your configured timezone ('America/Chicago').
         q['due_date'] = timezone.localdate().strftime('%Y-%m-%d')
-        
-        if 'date_filter' in q:
-            del q['date_filter']
-            
+        if 'date_filter' in q: del q['date_filter']
         return redirect(f"{request.path}?{q.urlencode()}")
 
-    # --- Step 2: The rest of the view is unchanged and now works correctly ---
-    status_filter = request.GET.get('status') or request.GET.get('current_status', 'All')
+    # Get all filter parameters, using hidden fields as fallbacks
+    status_filter = request.GET.get('status', request.GET.get('current_status', 'All'))
+    month_filter = request.GET.get('month_filter', request.GET.get('current_month_filter'))
     query = request.GET.get('query', '')
     due_date_specific = request.GET.get('due_date')
 
+    # Apply filters
     queryset = SubLot.objects.all().order_by('-due_date')
 
     if status_filter and status_filter != "All":
@@ -358,39 +352,55 @@ def labeled_lot_list(request):
     if query:
         queryset = queryset.filter(sub_lot_id__icontains=query)
 
-    if due_date_specific:
+    if month_filter:
+        try:
+            year, month = map(int, month_filter.split('-'))
+            queryset = queryset.filter(due_date__year=year, due_date__month=month)
+        except (ValueError, TypeError): pass
+    elif due_date_specific:
         try:
             selected_date = datetime.strptime(due_date_specific, '%Y-%m-%d').date()
             queryset = queryset.filter(due_date=selected_date)
-        except (ValueError, TypeError):
-            pass
+        except (ValueError, TypeError): pass
 
-    # Find the board corresponding to the current local month and year
+    # Build the filter description string for the UI
+    filter_description_parts = [f"Status: {status_filter}"]
+    if month_filter:
+        year, month = map(int, month_filter.split('-'))
+        filter_description_parts.append(f"Month: {date(year, month, 1).strftime('%B %Y')}")
+    elif due_date_specific:
+        filter_description_parts.append(f"Date: {due_date_specific}")
+    filter_description = " | ".join(filter_description_parts)
+            
+    # Get available months for the filter buttons
+    available_months_qs = MonthlyBoard.objects.values('year', 'month').order_by('-year', '-month')
+    available_months = [{'year': item['year'], 'month': item['month'], 'date_obj': date(item['year'], item['month'], 1), 'month_value': f"{item['year']}-{item['month']:02d}"} for item in available_months_qs]
+            
+    paginator = Paginator(queryset, 25)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+    last_sync = SyncLog.objects.order_by('-timestamp').first()
+
     try:
         local_today = timezone.localdate()
         current_board = MonthlyBoard.objects.get(month=local_today.month, year=local_today.year)
     except MonthlyBoard.DoesNotExist:
         current_board = None
-            
-    paginator = Paginator(queryset, 25)
-    page_number = request.GET.get('page')
-    page_obj = paginator.get_page(page_number)
-    
-    last_sync = SyncLog.objects.order_by('-timestamp').first()
 
     context = {
-        'sub_lots': page_obj,
-        'query': query,
-        'status_filter': status_filter,
-        'last_sync': last_sync,
+        'sub_lots': page_obj, 'query': query,
+        'status_filter': status_filter, 'last_sync': last_sync,
         'due_date_specific': due_date_specific,
         'current_board': current_board,
+        'month_filter': month_filter,
+        'available_months': available_months,
+        'filter_description': filter_description,
     }
 
-    if request.htmx:
-        return render(request, 'tracker/_lot_list_partial.html', context)
-    
+    # The view now has only ONE return statement. It always renders the full page.
     return render(request, 'tracker/labeled_lot_list.html', context)
+            
+ 
 
 @login_required
 def sub_lot_detail(request, sub_lot_id):
@@ -543,6 +553,7 @@ def sync_board(request, board_id):
     A generic view to sync data from any Monday.com board specified by its board_id.
     It fetches the board's details from the MonthlyBoard model and then runs the sync.
     """
+    next_url = request.POST.get('next', 'tracker:labeled_lot_list')
     # Get the specific board object we need to sync
     board_to_sync = get_object_or_404(MonthlyBoard, board_id=board_id)
 
@@ -675,7 +686,7 @@ def sync_board(request, board_id):
         messages.error(request, f"An error occurred while syncing '{board_to_sync.name}': {e}")
 
     # Redirect back to the board management page
-    return redirect('tracker:manage_boards')
+    return redirect(next_url)
 
 @user_passes_test(lambda u: u.is_staff)
 @login_required

@@ -1,18 +1,13 @@
 {% extends 'base.html' %}
 {% load humanize %}
-{% load status_tags %}
 
 {% block title %}Labeled Lots{% endblock %}
 
 {% block content %}
 <div class="max-w-6xl mx-auto p-6">
-    <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+    <div class="flex flex-col md:flex-row justify-between items-start mb-6 gap-4">
         <div>
             <h1 class="text-3xl font-bold text-gray-100">All Labeled Lots</h1>
-            <a href="{% url 'tracker:admin_dashboard' %}" class="inline-flex items-center text-sm text-teal-400 hover:text-teal-300 mt-2">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
-                Back to Dashboard
-            </a>
         </div>
         <div class="flex items-center space-x-4">
             {% if last_sync %}
@@ -23,6 +18,7 @@
             {% if current_board %}
                 <form action="{% url 'tracker:sync_board' current_board.board_id %}" method="post">
                     {% csrf_token %}
+                    <input type="hidden" name="next" value="{{ request.path }}">
                     <button type="submit" class="bg-sky-600 text-white px-4 py-2 rounded-md hover:bg-sky-700">
                         Sync Current Month
                     </button>
@@ -32,47 +28,49 @@
                     No board has been configured for the current month.
                 </p>
             {% endif %}
-
         </div>
     </div>
 
-    <form hx-get="{% url 'tracker:labeled_lot_list' %}" 
-          hx-target="#lot-list-container" 
-          hx-swap="outerHTML"
-          hx-push-url="true"
-          class="bg-gray-800 p-4 rounded-lg border border-gray-700 mb-6 space-y-4"
-          id="filters-form">
+    <div id="filterable-content">
 
-        <div class="flex flex-wrap items-center gap-2">
-            <button type="submit" name="status" value="All" class="py-2 px-4 rounded-lg {% if not status_filter or status_filter == 'All' %}bg-teal-600 text-white{% else %}bg-gray-700 hover:bg-gray-600 text-white{% endif %}">All</button>
-            <button type="submit" name="status" value="REQ ATTN" class="py-2 px-4 rounded-lg {% if status_filter == 'REQ ATTN' %}bg-red-700 text-white{% else %}bg-red-600 hover:bg-red-500 text-white{% endif %}">REQ ATTN</button>
-            <button type="submit" name="status" value="Done" class="py-2 px-4 rounded-lg {% if status_filter == 'Done' %}bg-green-700 text-white{% else %}bg-green-600 hover:bg-green-500 text-white{% endif %}">Done</button>
-            <button type="submit" name="status" value="Quality Release" class="py-2 px-4 rounded-lg {% if status_filter == 'Quality Release' %}bg-teal-700 text-white{% else %}bg-teal-600 hover:bg-teal-500 text-white{% endif %}">Quality Release</button>
-            <button type="submit" name="status" value="Tech Release" class="py-2 px-4 rounded-lg {% if status_filter == 'Tech Release' %}bg-blue-700 text-white{% else %}bg-blue-600 hover:bg-blue-500 text-white{% endif %}">Tech Release</button>
-            <button type="submit" name="status" value="Final Labeling Release" class="py-2 px-4 rounded-lg {% if status_filter == 'Final Labeling Release' %}bg-pink-700 text-white{% else %}bg-pink-600 hover:bg-pink-500 text-white{% endif %}">Final Labeling Release</button>
-        </div>
+        <form hx-get="{% url 'tracker:labeled_lot_list' %}" 
+              hx-target="#filterable-content"
+              hx-select="#filterable-content"
+              hx-swap="outerHTML"
+              hx-push-url="true"
+              class="bg-gray-800 p-4 rounded-lg border border-gray-700 mb-6 space-y-4"
+              id="filters-form">
 
-        <div class="flex flex-wrap items-center gap-3 border-t border-gray-700 pt-4">
-            <button type="submit" name="date_filter" value="today" 
-                    onclick="document.getElementById('due_date_picker').value = '';"
-                    class="py-2 px-4 rounded-lg {% if date_filter_type == 'today' %}bg-indigo-600 text-white{% else %}bg-gray-700 hover:bg-gray-600 text-white{% endif %}">
-                Due Today
-            </button>
+            <div class="flex flex-wrap items-center gap-2">
+                <button type="submit" name="status" value="All" class="py-2 px-4 rounded-lg transition-colors duration-200 {% if not status_filter or status_filter == 'All' %}bg-teal-600 text-white{% else %}bg-gray-700 hover:bg-gray-600 text-white{% endif %}">All</button>
+                <button type="submit" name="status" value="REQ ATTN" class="py-2 px-4 rounded-lg transition-colors duration-200 {% if status_filter == 'REQ ATTN' %}bg-red-700 text-white{% else %}bg-red-600 hover:bg-red-500 text-white{% endif %}">REQ ATTN</button>
+                <button type="submit" name="status" value="Done" class="py-2 px-4 rounded-lg transition-colors duration-200 {% if status_filter == 'Done' %}bg-green-700 text-white{% else %}bg-green-600 hover:bg-green-500 text-white{% endif %}">Done</button>
+                <button type="submit" name="status" value="Quality Release" class="py-2 px-4 rounded-lg transition-colors duration-200 {% if status_filter == 'Quality Release' %}bg-teal-700 text-white{% else %}bg-teal-600 hover:bg-teal-500 text-white{% endif %}">Quality Release</button>
+                <button type="submit" name="status" value="Tech Release" class="py-2 px-4 rounded-lg transition-colors duration-200 {% if status_filter == 'Tech Release' %}bg-blue-700 text-white{% else %}bg-blue-600 hover:bg-blue-500 text-white{% endif %}">Tech Release</button>
+                <button type="submit" name="status" value="Final Labeling Release" class="py-2 px-4 rounded-lg transition-colors duration-200 {% if status_filter == 'Final Labeling Release' %}bg-pink-700 text-white{% else %}bg-pink-600 hover:bg-pink-500 text-white{% endif %}">Final Labeling Release</button>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2 border-t border-gray-700 pt-4">
+                <button type="submit" name="month_filter" value="" onclick="document.getElementById('due_date_picker').value = '';" class="py-2 px-4 rounded-lg text-sm transition-colors duration-200 {% if not month_filter and not due_date_specific %}bg-purple-600 text-white{% else %}bg-gray-700 hover:bg-gray-600 text-white{% endif %}">All Time</button>
+                {% for month in available_months %}
+                    <button type="submit" name="month_filter" value="{{ month.month_value }}" onclick="document.getElementById('due_date_picker').value = '';" class="py-2 px-4 rounded-lg text-sm transition-colors duration-200 {% if month_filter == month.month_value %}bg-purple-600 text-white{% else %}bg-gray-700 hover:bg-gray-600 text-white{% endif %}">{{ month.date_obj|date:"F Y" }}</button>
+                {% endfor %}
+            </div>
+
+            <div class="flex flex-wrap items-center gap-3 border-t border-gray-700 pt-4">
+                <button type="submit" name="date_filter" value="today" onclick="document.getElementById('due_date_picker').value = '';" class="py-2 px-4 rounded-lg transition-colors duration-200 {% if request.GET.due_date == today_str %}bg-indigo-600 text-white{% else %}bg-gray-700 hover:bg-gray-600 text-white{% endif %}">Due Today</button>
+                <label for="due_date_picker" class="text-sm text-gray-300">Or pick a day:</label>
+                <input type="date" id="due_date_picker" name="due_date" value="{{ due_date_specific|default:'' }}" class="bg-gray-700 border border-gray-600 text-white rounded-lg px-3 py-1.5 focus:ring-teal-500 focus:border-teal-500" onchange="this.form.requestSubmit();">
+                <a href="{% url 'tracker:labeled_lot_list' %}" class="py-2 px-4 rounded-lg text-sm text-gray-400 hover:bg-gray-700 hover:text-white ml-auto">Clear All Filters</a>
+            </div>
             
-            <label for="due_date" class="text-sm text-gray-300">Or pick a day:</label>
-            <input type="date" 
-                   id="due_date_picker"
-                   name="due_date"
-                   value="{{ due_date_specific|default:'' }}"
-                   class="bg-gray-700 border border-gray-600 text-white rounded-lg px-3 py-1.5 focus:ring-teal-500 focus:border-teal-500"
-                   onchange="this.form.requestSubmit();">
-            
-            <a href="{% url 'tracker:labeled_lot_list' %}" class="py-2 px-4 rounded-lg text-sm text-gray-400 hover:bg-gray-700 hover:text-white ml-auto">Clear All Filters</a>
-        </div>
-        
-        <input type="hidden" name="current_status" value="{{ status_filter|default:'All' }}">
-    </form>
+            <input type="hidden" name="current_status" value="{{ status_filter|default:'All' }}">
+            <input type="hidden" name="current_month_filter" value="{{ month_filter|default:'' }}">
+        </form>
     
-    {% include 'tracker/_lot_list_partial.html' %}
+        <div id="lot-list-container">
+          {% include 'tracker/_lot_list_partial.html' %}
+        </div>
+    </div> 
 </div>
 {% endblock %}

@@ -1,0 +1,27 @@
+{% load humanize %}
+
+<div class="flex justify-between items-center mb-4">
+    <p class="text-sm text-gray-400">
+        Showing <span class="font-bold text-white">{{ donors.start_index }} - {{ donors.end_index }}</span> of 
+        <span class="font-bold text-white">{{ donors.paginator.count }}</span> donors.
+    </p>
+    {% if total_grafts %}
+    <p class="text-sm text-gray-400">Total Grafts: <strong class="font-bold text-white">{{ total_grafts|default:0|intcomma }}</strong></p>
+    {% endif %}
+</div>
+
+<div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+    {% include 'tracker/_donor_card_partial.html' %}
+</div>
+
+{% if donors.paginator.num_pages > 1 %}
+<div class="mt-8 flex justify-center items-center space-x-2 text-sm">
+    {% if donors.has_previous %}
+        <button hx-get="?page={{ donors.previous_page_number }}&query={{ query }}" hx-target="#donor-list-wrapper" hx-swap="innerHTML" class="px-4 py-2 bg-gray-700 rounded-md hover:bg-gray-600 transition-colors">‹ Prev</button>
+    {% endif %}
+    <span class="px-4 py-2 text-gray-400">Page {{ donors.number }} of {{ donors.paginator.num_pages }}</span>
+    {% if donors.has_next %}
+        <button hx-get="?page={{ donors.next_page_number }}&query={{ query }}" hx-target="#donor-list-wrapper" hx-swap="innerHTML" class="px-4 py-2 bg-gray-700 rounded-md hover:bg-gray-600 transition-colors">Next ›</button>
+    {% endif %}
+</div>
+{% endif %}
