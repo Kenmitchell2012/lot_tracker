@@ -682,30 +682,21 @@ def sync_board(request, board_id):
                     skipped_count += 1
                     continue
 
-                # --- FINAL LOGIC: FIND OR CREATE PARENTS ---
                 donor_id_str = full_sublot_id.split('-')[0]
-
-                # Step 1: Find or create the Donor. This creates the placeholder "folder".
                 donor_obj, created_donor = Donor.objects.get_or_create(donor_id=donor_id_str)
                 
-                # Step 2: Try to find the donor's initial Lot (the one from the main sync).
-                parent_lot_obj = Lot.objects.filter(
-                    donor=donor_obj
-                ).order_by('packaged_date').first()
+                parent_lot_obj = Lot.objects.filter(donor=donor_obj).order_by('packaged_date').first()
                 
-                # Step 3: If no initial Lot is found, create a placeholder Lot for it.
                 if not parent_lot_obj:
-                    # The placeholder Lot ID is based on the Donor ID to be unique and identifiable.
                     placeholder_lot_id = f"{donor_id_str}-INITIAL"
                     parent_lot_obj, created_lot = Lot.objects.get_or_create(
                         lot_id=placeholder_lot_id,
                         defaults={
                             'donor': donor_obj,
-                            'product_type': "Pending Main Sync", # Clearly marks it as a placeholder
+                            'product_type': "Pending Main Sync",
                             'data_source': 'PLACEHOLDER'
                         }
                     )
-                # --- END OF LOGIC ---
 
                 latest_comment_body = None
                 if status == 'REQ ATTN':
@@ -713,7 +704,6 @@ def sync_board(request, board_id):
                     updates_query = f'query {{ items(ids: [{item_id}]) {{ updates(limit: 1) {{ body }} }} }}'
                     updates_response = requests.post(API_URL, headers=headers, json={'query': updates_query})
                     updates_data = updates_response.json()
-                    
                     updates = updates_data.get('data', {}).get('items', [{}])[0].get('updates', [])
                     if updates:
                         latest_comment_body = updates[0].get('body')
@@ -736,7 +726,6 @@ def sync_board(request, board_id):
                     }
                 )
 
-                # Update running totals after each successful save
                 total_lots_processed += 1
                 if sublot.final_quantity:
                     total_grafts_processed += sublot.final_quantity
@@ -760,6 +749,7 @@ def sync_board(request, board_id):
         messages.error(request, f"An error occurred while syncing '{board_to_sync.name}': {e}")
     
     return redirect('tracker:manage_boards')
+
 
 @user_passes_test(lambda u: u.is_staff)
 @login_required
@@ -867,31 +857,31 @@ def report_list(request):
             year -= 1
         return date(year, month, 1)
 
-    twelve_months_ago_start = subtract_months(start_of_this_month, 11)
+    thirteen_months_ago_start = subtract_months(start_of_this_month, 12)
 
     # --- Create labels and placeholder data for the last 12 months ---
     full_months = OrderedDict()
-    for i in range(12):
-        month_date = subtract_months(start_of_this_month, 11 - i)
+    for i in range(13):
+        month_date = subtract_months(start_of_this_month, 12 - i)
         label = month_date.strftime('%b %Y')
         full_months[label] = {'label': label, 'fpp_total': 0, 'labeled_total': 0, 'irradiated_total': 0}
 
     # --- Queries for Summary Cards (based on last 12 months from today) ---
-    packaged_summary_data = Lot.objects.filter(packaged_date__gte=twelve_months_ago_start).values('product_type').annotate(total=Sum('quantity')).order_by('-total')
+    packaged_summary_data = Lot.objects.filter(packaged_date__gte=thirteen_months_ago_start).values('product_type').annotate(total=Sum('quantity')).order_by('-total')
     # This summary card still uses labeled_date, as its title is "Labeled (Last 12 Months)"
-    labeled_summary_query = SubLot.objects.filter(labeled_date__gte=twelve_months_ago_start).values('product_type').annotate(total=Sum('final_quantity')).order_by('-total')
-    fpp_summary_data = Lot.objects.filter(fpp_date__gte=twelve_months_ago_start).values('product_type').annotate(total=Sum('quantity')).order_by('-total')
-    excluded_families_data = Lot.objects.filter(packaged_date__gte=twelve_months_ago_start).exclude(product_type__in=["CGG", "CGP"]).values('product_type').annotate(total=Sum('quantity')).order_by('-total')
+    labeled_summary_query = SubLot.objects.filter(labeled_date__gte=thirteen_months_ago_start).values('product_type').annotate(total=Sum('final_quantity')).order_by('-total')
+    fpp_summary_data = Lot.objects.filter(fpp_date__gte=thirteen_months_ago_start).values('product_type').annotate(total=Sum('quantity')).order_by('-total')
+    excluded_families_data = Lot.objects.filter(packaged_date__gte=thirteen_months_ago_start).exclude(product_type__in=["CGG", "CGP"]).values('product_type').annotate(total=Sum('quantity')).order_by('-total')
     
     # --- Queries for Monthly Trend Chart ---
     # FPP and Irradiated trends are still based on their respective dates
-    fpp_by_month = Lot.objects.filter(fpp_date__isnull=False, fpp_date__gte=twelve_months_ago_start).annotate(month=TruncMonth('fpp_date')).values('month').annotate(total=Sum('quantity'))
-    irradiated_by_month = Lot.objects.filter(irr_out_date__isnull=False, irr_out_date__gte=twelve_months_ago_start).annotate(month=TruncMonth('irr_out_date')).values('month').annotate(total=Sum('quantity'))
+    fpp_by_month = Lot.objects.filter(fpp_date__isnull=False, fpp_date__gte=thirteen_months_ago_start).annotate(month=TruncMonth('fpp_date')).values('month').annotate(total=Sum('quantity'))
+    irradiated_by_month = Lot.objects.filter(irr_out_date__isnull=False, irr_out_date__gte=thirteen_months_ago_start).annotate(month=TruncMonth('irr_out_date')).values('month').annotate(total=Sum('quantity'))
 
     # THIS IS THE CORRECTED QUERY: It groups by the source_board's month and year
     labeled_by_board = SubLot.objects.filter(
         source_board__isnull=False,
-        source_board__year__gte=twelve_months_ago_start.year
+        source_board__year__gte=thirteen_months_ago_start.year
     ).values(
         'source_board__year', 'source_board__month'
     ).annotate(
@@ -980,29 +970,44 @@ def yield_report(request):
 def report_detail(request, report_id):
     report = get_object_or_404(Report, id=report_id)
 
-    # --- Calculate data for all three summary charts ---
-    # 1. All-Time Packaged Grafts
-    packaged_summary_data = Lot.objects.values('product_type')\
-        .annotate(total=Sum('quantity')).order_by('-total')
+    # --- ADD THIS DATE CALCULATION LOGIC ---
+    # This is the same logic from your main reports page
+    today = timezone.localdate()
+    start_of_this_month = today.replace(day=1)
 
-    # 2. All-Time Labeled Grafts
-    labeled_summary_query = SubLot.objects.values('parent_lot__product_type')\
-        .annotate(total=Sum('final_quantity')).order_by('-total')
+    def subtract_months(dt, months_to_subtract):
+        year, month = dt.year, dt.month - months_to_subtract
+        while month <= 0:
+            month += 12
+            year -= 1
+        return date(year, month, 1)
+
+    thirteen_months_ago_start = subtract_months(start_of_this_month, 12)
+    # --- END OF ADDITION ---
+
+    # --- UPDATE THE QUERIES TO USE THE DATE FILTER ---
+    # 1. 13-Month Packaged Grafts
+    packaged_summary_data = Lot.objects.filter(
+        packaged_date__gte=thirteen_months_ago_start
+    ).values('product_type').annotate(total=Sum('quantity')).order_by('-total')
+
+    # 2. 13-Month Labeled Grafts
+    # This now uses the sub-lot's own product_type for consistency
+    labeled_summary_query = SubLot.objects.filter(
+        labeled_date__gte=thirteen_months_ago_start
+    ).values('product_type').annotate(total=Sum('final_quantity')).order_by('-total')
     
-    labeled_summary_cleaned = [
-        {'product_type': item['parent_lot__product_type'], 'total': item['total']}
-        for item in labeled_summary_query if item['parent_lot__product_type']
-    ]
-    
-    # 3. All-Time FPP Inspected Grafts
-    fpp_summary_data = Lot.objects.filter(fpp_date__isnull=False)\
-        .values('product_type').annotate(total=Sum('quantity')).order_by('-total')
+    # 3. 13-Month FPP Inspected Grafts
+    fpp_summary_data = Lot.objects.filter(
+        fpp_date__isnull=False,
+        fpp_date__gte=thirteen_months_ago_start
+    ).values('product_type').annotate(total=Sum('quantity')).order_by('-total')
 
     context = {
         'report': report,
         'packaged_chart_data': json.dumps(list(packaged_summary_data)),
-        'labeled_chart_data': json.dumps(labeled_summary_cleaned),
-        'fpp_chart_data': json.dumps(list(fpp_summary_data)), # Add new data
+        'labeled_chart_data': json.dumps(list(labeled_summary_query)), # No longer needs cleaning
+        'fpp_chart_data': json.dumps(list(fpp_summary_data)),
     }
     return render(request, 'tracker/report_detail.html', context)
 
