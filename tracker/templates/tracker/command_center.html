@@ -58,13 +58,29 @@
         </div>
 
         <!-- Smart Alerts -->
-        <div class="bg-yellow-900 border border-yellow-700 p-6 rounded-2xl text-yellow-100 shadow-md">
-            <h2 class="text-xl font-bold mb-3">⚠️ Smart Alerts</h2>
-            <ul class="list-disc pl-6 space-y-1 text-sm">
-                <li>3 lots have not been labeled for over 7 days</li>
-                <li>2 donors missing packaged date</li>
-                <li>1 lot pending FPP submission for over 5 days</li>
-            </ul>
+        <div class="bg-gradient-to-br from-red-800 to-red-900 border border-red-700 p-6 rounded-2xl text-red-100 shadow-md">
+            <h2 class="text-xl font-bold mb-3">⚠️ Requiring Attention</h2>
+            {% if lots_req_attn %}
+                <ul class="divide-y divide-red-700/50">
+                    {% for sub_lot in lots_req_attn %}
+                        <li class="py-4 px-2 rounded-md hover:bg-red-700/50 transition-colors">
+                            <a href="{% url 'tracker:sub_lot_detail' sub_lot.id %}" class="block">
+                                <div class="flex justify-between items-center">
+                                    <span class="font-semibold text-white">{{ sub_lot.sub_lot_id }}</span>
+                                    <span class="text-xs text-red-200">Due: {{ sub_lot.due_date|date:"M d"|default:"N/A" }}</span>
+                                </div>
+                                {% if sub_lot.latest_comment %}
+                                    <div class="mt-2 pl-2 border-l-2 border-red-600 text-sm text-red-100 prose prose-invert max-w-none">
+                                        {{ sub_lot.latest_comment|safe }}
+                                    </div>
+                                {% endif %}
+                            </a>
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p class="text-sm text-red-200">No lots currently require attention. Great job!</p>
+            {% endif %}
         </div>
 
         <!-- Recent Activity -->

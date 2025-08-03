@@ -32,16 +32,40 @@ class Lot(models.Model):
 
     def __str__(self):
         return self.lot_id
+    
+class MonthlyBoard(models.Model):
+    board_id = models.CharField(max_length=20, unique=True, help_text="The ID of the Monday.com board.")
+    name = models.CharField(max_length=100, help_text="e.g., 'Labeling - July 2025'")
+    month = models.IntegerField()
+    year = models.IntegerField()
+    last_synced = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-year', '-month']
+        unique_together = ('month', 'year') # Ensure only one board per month/year combo
+
+    def __str__(self):
+        return self.name
 
 class SubLot(models.Model):
     """Represents a final LABELED lot (e.g., CRT999999-DCM-AR) and links to its parent."""
     parent_lot = models.ForeignKey(Lot, related_name='sub_lots', on_delete=models.CASCADE)
+    source_board = models.ForeignKey(
+        MonthlyBoard, 
+        related_name='sub_lots', 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True
+    )
     sub_lot_id = models.CharField(max_length=255, unique=True)
     labeled_by = models.CharField(max_length=255, blank=True, null=True)
     labeled_date = models.DateField(blank=True, null=True)
     final_quantity = models.IntegerField(blank=True, null=True)
     status = models.CharField(max_length=100, blank=True, null=True)
     due_date = models.DateField(blank=True, null=True)
+
+    product_type = models.CharField(max_length=100, blank=True, null=True)
+    latest_comment = models.TextField(blank=True, null=True, help_text="Stores the latest update/comment from Monday.com for this item.")
 
     def __str__(self):
         return self.sub_lot_id
@@ -108,16 +132,3 @@ class Report(models.Model):
     def __str__(self):
         return f"Report for {self.month}/{self.year}"
     
-class MonthlyBoard(models.Model):
-    board_id = models.CharField(max_length=20, unique=True, help_text="The ID of the Monday.com board.")
-    name = models.CharField(max_length=100, help_text="e.g., 'Labeling - July 2025'")
-    month = models.IntegerField()
-    year = models.IntegerField()
-    last_synced = models.DateTimeField(null=True, blank=True)
-
-    class Meta:
-        ordering = ['-year', '-month']
-        unique_together = ('month', 'year') # Ensure only one board per month/year combo
-
-    def __str__(self):
-        return self.name

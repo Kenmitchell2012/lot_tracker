@@ -42,6 +42,9 @@ import shutil
 import dateutil.parser
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
+from django.db.models import F, ExpressionWrapper, FloatField
+from django.urls import reverse
+from django.db.models import Q
 
 # Setup logger
 logger = logging.getLogger(__name__)
@@ -104,6 +107,7 @@ def command_center(request):
     total_grafts_month = Lot.objects.filter(fpp_date__year=this_year, fpp_date__month=this_month).aggregate(total=Sum('quantity'))['total'] or 0
     total_labeled_month = SubLot.objects.filter(labeled_date__year=this_year, labeled_date__month=this_month).aggregate(total=Sum('final_quantity'))['total'] or 0
     total_irradiated_month = Lot.objects.filter(irr_out_date__year=this_year, irr_out_date__month=this_month).aggregate(total=Sum('quantity'))['total'] or 0
+    lots_req_attn = SubLot.objects.filter(status='REQ ATTN').order_by('-due_date')[:10]  # Get the 10 most recent lots that require attention
 
     try:
         current_board = MonthlyBoard.objects.get(month=this_month, year=this_year)
@@ -116,8 +120,64 @@ def command_center(request):
         'total_labeled_month': total_labeled_month,
         'total_irradiated_month': total_irradiated_month,
         'current_board': current_board,
+        'lots_req_attn': lots_req_attn,
     }
     return render(request, 'tracker/command_center.html', context)
+
+def global_search(request):
+    query = request.GET.get('q', '').strip()
+    results = []
+    
+    # Add a print statement for debugging
+    print(f"--- Global search received query: '{query}' ---")
+    
+    # UPDATED: Lowered the search minimum to 2 characters
+    if len(query) >= 2:
+        try:
+            donors = Donor.objects.filter(donor_id__icontains=query)[:5]
+            results.extend([
+                {'type': 'Donor', 'text': d.donor_id, 'url': reverse('tracker:donor_detail', args=[d.id])} 
+                for d in donors
+            ])
+        except Exception as e:
+            print(f"Error during global search for Donors: {e}")
+
+        try:
+            lots = Lot.objects.filter(lot_id__icontains=query)[:5]
+            results.extend([
+                {'type': 'Lot', 'text': l.lot_id, 'url': reverse('tracker:lot_detail', args=[l.id])} 
+                for l in lots
+            ])
+        except Exception as e:
+            print(f"Error during global search for Lots: {e}")
+
+        try:
+            sub_lots = SubLot.objects.filter(sub_lot_id__icontains=query)[:5]
+            results.extend([
+                {'type': 'Sub-Lot', 'text': s.sub_lot_id, 'url': reverse('tracker:sub_lot_detail', args=[s.id])} 
+                for s in sub_lots
+            ])
+        except Exception as e:
+            print(f"Error during global search for Sub-Lots: {e}")
+        
+        try:
+            documents = Document.objects.filter(
+                Q(document_type__icontains=query) | 
+                Q(file__icontains=query) | 
+                Q(donor__donor_id__icontains=query)
+            ).select_related('donor')[:5]
+            results.extend([
+                {
+                    'type': 'Document', 
+                    'text': f"{d.document_type} ({d.donor.donor_id})", 
+                    'url': reverse('tracker:donor_detail', args=[d.donor.id])
+                } 
+                for d in documents
+            ])
+        except Exception as e:
+            print(f"Error during global search for Documents: {e}")
+        
+    return JsonResponse({'results': results})
 
 @user_passes_test(lambda u: u.is_staff)
 def admin_dashboard(request):
@@ -278,35 +338,38 @@ def donor_list(request):
 def donor_detail(request, donor_id):
     donor = get_object_or_404(Donor, id=donor_id)
     
-    # Handle the document upload form submission
-    if request.method == 'POST':
-        form = DocumentForm(request.POST, request.FILES)
-        if form.is_valid():
-            document = form.save(commit=False)
-            document.donor = donor # Associate the document with the current donor
-            document.save()
+    # # Handle the document upload form submission
+    # if request.method == 'POST':
+    #     form = DocumentForm(request.POST, request.FILES)
+    #     if form.is_valid():
+    #         document = form.save(commit=False)
+    #         document.donor = donor # Associate the document with the current donor
+    #         document.save()
 
-            # Create a log entry
-            ActivityLog.objects.create(
-                user=request.user,
-                action_type="Document Uploaded",
-                details=f"Uploaded '{document.file.name}' to Donor '{donor.donor_id}'"
-            )
+    #         # Create a log entry
+    #         ActivityLog.objects.create(
+    #             user=request.user,
+    #             action_type="Document Uploaded",
+    #             details=f"Uploaded '{document.file.name}' to Donor '{donor.donor_id}'"
+    #         )
 
-            messages.success(request, 'Document uploaded successfully.')
-            return redirect('tracker:donor_detail', donor_id=donor.id)
-    else:
-        form = DocumentForm()
+    #         messages.success(request, 'Document uploaded successfully.')
+    #         return redirect('tracker:donor_detail', donor_id=donor.id)
+    # else:
+    #     form = DocumentForm()
 
     # Fetch existing data for display
     lots = donor.lots.all().order_by('lot_id')
     documents = donor.documents.all().order_by('-uploaded_at')
+    # get all sublots for this donor by querying through the lots
+    sub_lots = SubLot.objects.filter(parent_lot__donor=donor).order_by('sub_lot_id')
 
     context = {
         'donor': donor,
         'lots': lots,
         'documents': documents, # Pass documents to the template
-        'form': form,           # Pass the form to the template
+        # 'form': form,           # Pass the form to the template
+        'sub_lots': sub_lots,   # Pass sub-lots to the template
     }
     return render(request, 'tracker/donor_detail.html', context)
 
@@ -317,13 +380,9 @@ def lot_detail(request, lot_id):
     all related Events in chronological order.
     """
     lot = get_object_or_404(Lot, id=lot_id)
-    
-    # Get all "child" sub-lots associated with this lot
-    sub_lots = lot.sub_lots.all().order_by('sub_lot_id')
 
     context = {
         'lot': lot,
-        'sub_lots': sub_lots,
     }
     return render(request, 'tracker/lot_detail.html', context)
 
@@ -549,23 +608,15 @@ def sync_with_monday(request):
 @user_passes_test(lambda u: u.is_staff)
 @login_required
 def sync_board(request, board_id):
-    """
-    A generic view to sync data from any Monday.com board specified by its board_id.
-    It fetches the board's details from the MonthlyBoard model and then runs the sync.
-    """
-    next_url = request.POST.get('next', 'tracker:labeled_lot_list')
-    # Get the specific board object we need to sync
     board_to_sync = get_object_or_404(MonthlyBoard, board_id=board_id)
-
+    
     # --- SECTION 1: CONFIGURATION ---
     API_URL = "https://api.monday.com/v2"
     API_TOKEN = settings.MONDAY_API_TOKEN
     headers = {"Authorization": API_TOKEN, "API-Version": "2023-10"}
-
-    # Use the board_id from the function argument
     labeling_board_id = board_to_sync.board_id
     
-    # Column IDs remain the same as they are consistent across your labeling boards
+    product_type_col = "dropdown__1"
     labeled_by_col = "text5"
     labeled_date_col = "date43"
     due_date_col = "po_due_date"
@@ -579,10 +630,10 @@ def sync_board(request, board_id):
                 items_page(limit: $limit, cursor: $cursor) {{
                     cursor
                     items {{
-                        name
+                        id, name
                         column_values(ids: [
-                            "{labeled_by_col}", "{labeled_date_col}", "{due_date_col}",
-                            "{final_qty_col}", "{chart_status_col}"
+                            "{product_type_col}", "{labeled_by_col}", "{labeled_date_col}",
+                            "{due_date_col}", "{final_qty_col}", "{chart_status_col}"
                         ]) {{
                             id, text
                         }}
@@ -593,15 +644,15 @@ def sync_board(request, board_id):
     '''
 
     # --- SECTION 3: SYNC LOGIC ---
-    limit = 100
-    cursor = None
+    limit, cursor = 100, None
     created_count, updated_count, skipped_count = 0, 0, 0
+    total_lots_processed = 0
+    total_grafts_processed = 0
 
     try:
         while True:
             variables = {'limit': limit, 'cursor': cursor}
             data = {'query': query, 'variables': variables}
-
             response = requests.post(API_URL, headers=headers, json=data)
             response.raise_for_status()
             results = response.json()
@@ -611,56 +662,84 @@ def sync_board(request, board_id):
 
             items_page = results.get('data', {}).get('boards', [{}])[0].get('items_page', {})
             items = items_page.get('items', [])
-
             if not items:
                 break
 
             for item in items:
                 full_sublot_id = item.get('name')
-                if not full_sublot_id:
-                    skipped_count += 1
-                    continue
-
-                parts = full_sublot_id.split('-')
-                parent_id = '-'.join(parts[:-1]) if len(parts) > 2 else full_sublot_id
-                try:
-                    parent_lot_obj = Lot.objects.get(lot_id=parent_id)
-                except Lot.DoesNotExist:
-                    donor_id_str = parent_id.split('-')[0]
-                    product_type_str = parent_id.split('-')[1] if len(parent_id.split('-')) > 1 else ''
-                    donor_obj, _ = Donor.objects.get_or_create(donor_id=donor_id_str)
-                    parent_lot_obj, _ = Lot.objects.get_or_create(
-                        lot_id=parent_id,
-                        defaults={'donor': donor_obj, 'product_type': product_type_str, 'data_source': 'PLACEHOLDER'}
-                    )
-
-                labeled_by, labeled_date_str, due_date_str, final_qty, status = None, None, None, None, None
+                
+                sublot_product_type, labeled_by, labeled_date_str, due_date_str, final_qty, status = None, None, None, None, None, None
                 for col in item['column_values']:
                     col_text = col.get('text')
-                    if col['id'] == labeled_by_col: labeled_by = col_text
+                    if col['id'] == product_type_col: sublot_product_type = col_text
+                    elif col['id'] == labeled_by_col: labeled_by = col_text
                     elif col['id'] == labeled_date_col: labeled_date_str = col_text
                     elif col['id'] == due_date_col: due_date_str = col_text
                     elif col['id'] == final_qty_col: final_qty = int(col_text) if col_text and col_text.isdigit() else None
                     elif col['id'] == chart_status_col: status = col_text
                 
-                due_date_obj = None
-                if due_date_str:
-                    clean_date_str = due_date_str.split(' - ')[0].strip()
-                    due_date_obj = datetime.strptime(clean_date_str, '%Y-%m-%d').date()
+                if not full_sublot_id:
+                    skipped_count += 1
+                    continue
 
-                labeled_date_obj = None
-                if labeled_date_str:
-                    clean_date_str = labeled_date_str.split(' - ')[0].strip()
-                    labeled_date_obj = datetime.strptime(clean_date_str, '%Y-%m-%d').date()
+                # --- FINAL LOGIC: FIND OR CREATE PARENTS ---
+                donor_id_str = full_sublot_id.split('-')[0]
+
+                # Step 1: Find or create the Donor. This creates the placeholder "folder".
+                donor_obj, created_donor = Donor.objects.get_or_create(donor_id=donor_id_str)
+                
+                # Step 2: Try to find the donor's initial Lot (the one from the main sync).
+                parent_lot_obj = Lot.objects.filter(
+                    donor=donor_obj
+                ).order_by('packaged_date').first()
+                
+                # Step 3: If no initial Lot is found, create a placeholder Lot for it.
+                if not parent_lot_obj:
+                    # The placeholder Lot ID is based on the Donor ID to be unique and identifiable.
+                    placeholder_lot_id = f"{donor_id_str}-INITIAL"
+                    parent_lot_obj, created_lot = Lot.objects.get_or_create(
+                        lot_id=placeholder_lot_id,
+                        defaults={
+                            'donor': donor_obj,
+                            'product_type': "Pending Main Sync", # Clearly marks it as a placeholder
+                            'data_source': 'PLACEHOLDER'
+                        }
+                    )
+                # --- END OF LOGIC ---
+
+                latest_comment_body = None
+                if status == 'REQ ATTN':
+                    item_id = item.get('id')
+                    updates_query = f'query {{ items(ids: [{item_id}]) {{ updates(limit: 1) {{ body }} }} }}'
+                    updates_response = requests.post(API_URL, headers=headers, json={'query': updates_query})
+                    updates_data = updates_response.json()
+                    
+                    updates = updates_data.get('data', {}).get('items', [{}])[0].get('updates', [])
+                    if updates:
+                        latest_comment_body = updates[0].get('body')
+
+                due_date_obj = datetime.strptime(due_date_str.split(' - ')[0].strip(), '%Y-%m-%d').date() if due_date_str else None
+                labeled_date_obj = datetime.strptime(labeled_date_str.split(' - ')[0].strip(), '%Y-%m-%d').date() if labeled_date_str else None
 
                 sublot, created = SubLot.objects.update_or_create(
                     sub_lot_id=full_sublot_id,
                     defaults={
-                        'parent_lot': parent_lot_obj, 'labeled_by': labeled_by,
-                        'labeled_date': labeled_date_obj, 'due_date': due_date_obj,
-                        'final_quantity': final_qty, 'status': status,
+                        'parent_lot': parent_lot_obj,
+                        'source_board': board_to_sync,
+                        'product_type': sublot_product_type,
+                        'labeled_by': labeled_by,
+                        'labeled_date': labeled_date_obj,
+                        'due_date': due_date_obj,
+                        'final_quantity': final_qty,
+                        'status': status,
+                        'latest_comment': latest_comment_body,
                     }
                 )
+
+                # Update running totals after each successful save
+                total_lots_processed += 1
+                if sublot.final_quantity:
+                    total_grafts_processed += sublot.final_quantity
 
                 if created: created_count += 1
                 else: updated_count += 1
@@ -668,25 +747,19 @@ def sync_board(request, board_id):
             cursor = items_page.get('cursor')
             if not cursor:
                 break
-
-        # --- SECTION 4: LOGGING AND FEEDBACK ---
-        details_str = f"Created: {created_count}, Updated: {updated_count}, Skipped: {skipped_count}."
         
-        # Update the board's last synced time
+        details_str = (f"Created: {created_count}, Updated: {updated_count}, Skipped: {skipped_count}. "
+                       f"Processed: {total_lots_processed} lots totaling {total_grafts_processed:,} grafts.")
         board_to_sync.last_synced = timezone.now()
         board_to_sync.save()
-
-        # Create logs
         SyncLog.objects.create(board_id=labeling_board_id, status='Success', details=details_str)
         ActivityLog.objects.create(user=request.user, action_type="Board Data Synced", details=f"Synced board '{board_to_sync.name}'. {details_str}")
-        
-        messages.success(request, f"Successfully synced board: {board_to_sync.name}")
+        messages.success(request, f"Successfully synced board: {board_to_sync.name} ({details_str})")
 
     except Exception as e:
         messages.error(request, f"An error occurred while syncing '{board_to_sync.name}': {e}")
-
-    # Redirect back to the board management page
-    return redirect(next_url)
+    
+    return redirect('tracker:manage_boards')
 
 @user_passes_test(lambda u: u.is_staff)
 @login_required
@@ -781,67 +854,80 @@ def report_list(request):
             messages.error(request, f"Failed to generate report: {e}")
         return redirect('tracker:report_list')
 
-    # --- REFACTORED: Get date information once at the top ---
-    today = datetime.today().date()
+    # --- Date calculations for the 12-month window ---
+    today = timezone.localdate()
     current_year = today.year
     current_month = today.month
-    
-    # --- Filters for UI ---
-    all_product_types = Lot.objects.values_list('product_type', flat=True).distinct().order_by('product_type')
-    years = range(current_year - 5, current_year + 1)
+    start_of_this_month = today.replace(day=1)
 
     def subtract_months(dt, months_to_subtract):
-        year = dt.year
-        month = dt.month - months_to_subtract
+        year, month = dt.year, dt.month - months_to_subtract
         while month <= 0:
             month += 12
             year -= 1
-        # return datetime.date(year, month, 1)
         return date(year, month, 1)
 
-    # --- Labels for 12 months ---
-    start_of_this_month = today.replace(day=1)
+    twelve_months_ago_start = subtract_months(start_of_this_month, 11)
+
+    # --- Create labels and placeholder data for the last 12 months ---
     full_months = OrderedDict()
     for i in range(12):
         month_date = subtract_months(start_of_this_month, 11 - i)
         label = month_date.strftime('%b %Y')
         full_months[label] = {'label': label, 'fpp_total': 0, 'labeled_total': 0, 'irradiated_total': 0}
 
-    one_year_ago = subtract_months(start_of_this_month, 12)
-
-    # --- Queries (unchanged) ---
-    packaged_summary_data = Lot.objects.filter(packaged_date__gte=one_year_ago).values('product_type').annotate(total=Sum('quantity')).order_by('-total')
-    labeled_summary_query = SubLot.objects.filter(labeled_date__gte=one_year_ago).values('parent_lot__product_type').annotate(total=Sum('final_quantity')).order_by('-total')
-    labeled_summary_cleaned = [{'product_type': item['parent_lot__product_type'], 'total': item['total']} for item in labeled_summary_query if item['parent_lot__product_type']]
-    fpp_summary_data = Lot.objects.filter(fpp_date__gte=one_year_ago).values('product_type').annotate(total=Sum('quantity')).order_by('-total')
+    # --- Queries for Summary Cards (based on last 12 months from today) ---
+    packaged_summary_data = Lot.objects.filter(packaged_date__gte=twelve_months_ago_start).values('product_type').annotate(total=Sum('quantity')).order_by('-total')
+    # This summary card still uses labeled_date, as its title is "Labeled (Last 12 Months)"
+    labeled_summary_query = SubLot.objects.filter(labeled_date__gte=twelve_months_ago_start).values('product_type').annotate(total=Sum('final_quantity')).order_by('-total')
+    fpp_summary_data = Lot.objects.filter(fpp_date__gte=twelve_months_ago_start).values('product_type').annotate(total=Sum('quantity')).order_by('-total')
+    excluded_families_data = Lot.objects.filter(packaged_date__gte=twelve_months_ago_start).exclude(product_type__in=["CGG", "CGP"]).values('product_type').annotate(total=Sum('quantity')).order_by('-total')
     
-    fpp_by_month = Lot.objects.filter(fpp_date__isnull=False, fpp_date__gte=one_year_ago).annotate(month=TruncMonth('fpp_date')).values('month').annotate(total=Sum('quantity'))
-    labeled_by_month = SubLot.objects.filter(labeled_date__isnull=False, labeled_date__gte=one_year_ago).annotate(month=TruncMonth('labeled_date')).values('month').annotate(total=Sum('final_quantity'))
-    irradiated_by_month = Lot.objects.filter(irr_out_date__isnull=False, irr_out_date__gte=one_year_ago).annotate(month=TruncMonth('irr_out_date')).values('month').annotate(total=Sum('quantity'))
+    # --- Queries for Monthly Trend Chart ---
+    # FPP and Irradiated trends are still based on their respective dates
+    fpp_by_month = Lot.objects.filter(fpp_date__isnull=False, fpp_date__gte=twelve_months_ago_start).annotate(month=TruncMonth('fpp_date')).values('month').annotate(total=Sum('quantity'))
+    irradiated_by_month = Lot.objects.filter(irr_out_date__isnull=False, irr_out_date__gte=twelve_months_ago_start).annotate(month=TruncMonth('irr_out_date')).values('month').annotate(total=Sum('quantity'))
 
+    # THIS IS THE CORRECTED QUERY: It groups by the source_board's month and year
+    labeled_by_board = SubLot.objects.filter(
+        source_board__isnull=False,
+        source_board__year__gte=twelve_months_ago_start.year
+    ).values(
+        'source_board__year', 'source_board__month'
+    ).annotate(
+        total=Sum('final_quantity')
+    ).order_by('source_board__year', 'source_board__month')
+
+    # --- Populate the monthly data dictionary ---
     for item in fpp_by_month:
         label = item['month'].strftime('%b %Y')
         if label in full_months: full_months[label]['fpp_total'] = item['total'] or 0
-    for item in labeled_by_month:
-        label = item['month'].strftime('%b %Y')
-        if label in full_months: full_months[label]['labeled_total'] = item['total'] or 0
+    
+    # This loop is now updated to use the new board-based query
+    for item in labeled_by_board:
+        month_date = date(item['source_board__year'], item['source_board__month'], 1)
+        label = month_date.strftime('%b %Y')
+        if label in full_months:
+            full_months[label]['labeled_total'] = item['total'] or 0
+
     for item in irradiated_by_month:
         label = item['month'].strftime('%b %Y')
         if label in full_months: full_months[label]['irradiated_total'] = item['total'] or 0
 
     monthly_graft_data = list(full_months.values())
-    excluded_families_data = Lot.objects.filter(packaged_date__gte=one_year_ago).exclude(product_type__in=["CGG", "CGP"]).values('product_type').annotate(total=Sum('quantity')).order_by('-total')
+    
+    # --- Final data assembly for the template ---
     reports = Report.objects.all().order_by('-year', '-month')
+    all_product_types = Lot.objects.values_list('product_type', flat=True).distinct().order_by('product_type')
+    years = range(current_year - 5, current_year + 1)
 
-    # --- Chart Cards (unchanged) ---
     chart_cards = [
         {"title": "📦 Packaged (Last 12 Months)", "canvas_id": "packagedChart", "color": "rgba(16, 185, 129, 0.8)", "data": json.dumps(list(packaged_summary_data))},
-        {"title": "🏷️ Labeled (Last 12 Months)", "canvas_id": "labeledChart", "color": "rgba(59, 130, 246, 0.8)", "data": json.dumps(labeled_summary_cleaned)},
+        {"title": "🏷️ Labeled (Last 12 Months)", "canvas_id": "labeledChart", "color": "rgba(59, 130, 246, 0.8)", "data": json.dumps(list(labeled_summary_query))},
         {"title": "🔍 FPP Inspected (Last 12 Months)", "canvas_id": "fppChart", "color": "rgba(168, 85, 247, 0.8)", "data": json.dumps(list(fpp_summary_data))},
         {"title": "📦 Packaged Grafts (Excl. CGG & CGP)", "canvas_id": "excludedPackagedChart", "color": "rgba(236, 72, 153, 0.8)", "data": json.dumps(list(excluded_families_data))},
     ]
 
-    # --- Final Context ---
     context = {
         'reports': reports,
         'chart_cards': chart_cards,
@@ -850,11 +936,31 @@ def report_list(request):
         'years': years,
         'months': months,
         'current_year': current_year,
-        # FIX: Use the variable defined at the top
         'current_month': current_month,
     }
 
     return render(request, 'tracker/report_list.html', context)
+
+
+@login_required
+def yield_report(request):
+    # Get all lots that have an initial quantity
+    lots_with_yield = Lot.objects.filter(
+        quantity__gt=0, 
+        data_source='PRIMARY_SYNC'
+    ).annotate(
+        # Sum the final quantity of all its children sub-lots
+        total_labeled_quantity=Sum('sub_lots__final_quantity')
+    ).annotate(
+        # Calculate the yield percentage
+        yield_percentage=ExpressionWrapper(
+            (F('total_labeled_quantity') * 100.0 / F('quantity')),
+            output_field=FloatField()
+        )
+    ).order_by('-yield_percentage')
+
+    context = {'lots_with_yield': lots_with_yield}
+    return render(request, 'tracker/yield_report.html', context)
 
 # def export_reports_pdf(request):
 #     reports = Report.objects.all().order_by('-generated_at')  # or however you fetch them

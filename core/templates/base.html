@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="https://unpkg.com/dropzone@5/dist/min/dropzone.min.css" />
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/htmx.org@1.9.10" defer></script>
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
 
     <style>
         .messages-wrapper {
@@ -26,29 +27,126 @@
                 </div>
 
                 <div class="hidden md:block">
-                    <div class="ml-10 flex items-baseline space-x-4">
+                    <div class="ml-10 flex items-center space-x-4">
                         {% if user.is_authenticated %}
+                            
+                            <div x-data="{
+                                query: '',
+                                results: [],
+                                open: false,
+                                loading: false,
+                                selectedIndex: -1,
+                                abortController: null,
+
+                                fetchResults() {
+                                    if (this.query.length < 2) {
+                                        this.results = [];
+                                        this.open = false;
+                                        return;
+                                    }
+                                    
+                                    this.loading = true;
+                                    this.open = true;
+
+                                    if (this.abortController) {
+                                        this.abortController.abort();
+                                    }
+                                    this.abortController = new AbortController();
+
+                                    fetch(`/search/?q=${this.query}`, { signal: this.abortController.signal })
+                                        .then(response => response.json())
+                                        .then(data => {
+                                            this.results = data.results;
+                                            this.selectedIndex = -1;
+                                        })
+                                        .catch(error => {
+                                            if (error.name === 'AbortError') return; // Ignore aborted fetches
+                                            console.error('Search fetch failed:', error);
+                                            this.open = false;
+                                        })
+                                        .finally(() => {
+                                            this.loading = false;
+                                        });
+                                },
+                                moveDown() {
+                                    if (!this.open || this.results.length === 0) return;
+                                    this.selectedIndex = (this.selectedIndex + 1) % this.results.length;
+                                    this.$nextTick(() => { this.$refs.results.children[this.selectedIndex].scrollIntoView({ block: 'nearest' }); });
+                                },
+                                moveUp() {
+                                    if (!this.open || this.results.length === 0) return;
+                                    this.selectedIndex = (this.selectedIndex - 1 + this.results.length) % this.results.length;
+                                    this.$nextTick(() => { this.$refs.results.children[this.selectedIndex].scrollIntoView({ block: 'nearest' }); });
+                                },
+                                selectResult() {
+                                    if (this.selectedIndex > -1) {
+                                        window.location.href = this.results[this.selectedIndex].url;
+                                    }
+                                }
+                            }"
+                            @click.away="open = false" 
+                            class="relative">
+                            
+                            <input type="text" 
+                                    x-model="query" 
+                                    @input.debounce.300ms="fetchResults()"
+                                    @focus="if (query.length >= 2) open = true"
+                                    @keydown.arrow-down.prevent="moveDown()"
+                                    @keydown.arrow-up.prevent="moveUp()"
+                                    @keydown.enter.prevent="selectResult()"
+                                    @keydown.escape="open = false"
+                                    placeholder="Search..."
+                                    class="bg-gray-700 text-white w-48 px-3 py-2 rounded-md text-sm font-medium focus:ring-2 focus:ring-cyan-500 focus:outline-none">
+                            
+                            <div x-show="open" x-transition class="absolute mt-2 w-72 bg-gray-800 border border-gray-700 rounded-md shadow-lg z-50 right-0">
+                                <ul class="py-1 max-h-96 overflow-y-auto" x-ref="results">
+                                    <template x-if="loading">
+                                        <li class="px-4 py-2 text-sm text-gray-400">Loading...</li>
+                                    </template>
+                                    <template x-if="!loading && results.length === 0 && query.length >= 2">
+                                        <li class="px-4 py-2 text-sm text-gray-400">No results found for "<span x-text="query"></span>"</li>
+                                    </template>
+                                    <template x-if="!loading && results.length > 0">
+                                        <template x-for="(result, index) in results" :key="index">
+                                            <li>
+                                                <a :href="result.url" 
+                                                :class="{ 'bg-gray-700': selectedIndex === index }"
+                                                class="flex justify-between items-center px-4 py-2 text-sm text-gray-200 hover:bg-gray-700">
+                                                    <span x-text="result.text"></span>
+                                                    <span x-text="result.type" class="text-xs bg-gray-600 text-gray-300 px-2 py-0.5 rounded-full"></span>
+                                                </a>
+                                            </li>
+                                        </template>
+                                    </template>
+                                </ul>
+                            </div>
+                        </div>
+
                             {% if user.is_staff %}
-                                <a href="{% url 'tracker:admin_dashboard' %}" class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition-colors">Dashboard</a>
-                                <a href="{% url 'tracker:report_list' %}" class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition-colors">Reports</a>
-                                <a href="{% url 'tracker:manage_boards' %}" class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition-colors">Manage Boards</a>
-                                <a href="{% url 'tracker:labeled_lot_list' %}" class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition-colors">Labeled Lots</a>
-                                <a href="{% url 'tracker:donor_list' %}" class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition-colors">Donors</a>
+                                <a href="{% url 'tracker:admin_dashboard' %}" class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium">Dashboard</a>
+                                <a href="{% url 'tracker:report_list' %}" class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium">Reports</a>
+                                <a href="{% url 'tracker:yield_report' %}" class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium">Yield Report</a>
+                                <a href="{% url 'tracker:manage_boards' %}" class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium">Manage Boards</a>
+                                <a href="{% url 'tracker:labeled_lot_list' %}" class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium">Labeled Lots</a>
+                                <a href="{% url 'tracker:donor_list' %}" class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium">Donors</a>
                             {% endif %}
-                            <span class="text-gray-400 px-3 py-2 text-sm">Welcome, {{ user.username }}</span>
-                            <form action="{% url 'logout' %}" method="post" class="inline">
-                                {% csrf_token %}
-                                <button type="submit" class="bg-red-600 text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-red-700 transition-colors">Log Out</button>
-                            </form>
+                            
+                            <div class="ml-3 relative flex items-center">
+                                <span class="text-gray-400 px-3 py-2 text-sm">Welcome, {{ user.username }}</span>
+                                <form action="{% url 'logout' %}" method="post" class="inline">
+                                    {% csrf_token %}
+                                    <button type="submit" class="bg-red-600 text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-red-700">Log Out</button>
+                                </form>
+                            </div>
                         {% else %}
-                            <a href="{% url 'login' %}" class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition-colors">Log In</a>
-                            <a href="{% url 'signup' %}" class="bg-teal-600 text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-teal-700 transition-colors">Sign Up</a>
+                            <a href="{% url 'login' %}" class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium">Log In</a>
+                            <a href="{% url 'signup' %}" class="bg-teal-600 text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-teal-700">Sign Up</a>
                         {% endif %}
                     </div>
                 </div>
 
                 <div class="-mr-2 flex md:hidden">
-                    <button id="mobile-menu-button" type="button" class="bg-gray-800 inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-white">
+                    <button id="mobile-menu-button" type="button" class="bg-gray-800 inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-white hover:bg-gray-700 focus:outline-none">
                         <span class="sr-only">Open main menu</span>
                         <svg id="hamburger-icon-open" class="block h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
                         <svg id="hamburger-icon-close" class="hidden h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
@@ -58,61 +156,12 @@
         </div>
 
         <div class="hidden md:hidden" id="mobile-menu">
-            <div class="px-2 pt-2 pb-3 space-y-1 sm:px-3">
-                {% if user.is_authenticated %}
-                    {% if user.is_staff %}
-                        <a href="{% url 'tracker:admin_dashboard' %}" class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium transition-colors">Dashboard</a>
-                        <a href="{% url 'tracker:report_list' %}" class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium transition-colors">Reports</a>
-                        <a href="{% url 'tracker:manage_boards' %}" class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium transition-colors">Manage Boards</a>
-                        <a href="{% url 'tracker:labeled_lot_list' %}" class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium transition-colors">Labeled Lots</a>
-                        <a href="{% url 'tracker:donor_list' %}" class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium transition-colors">Donors</a>
-                    {% endif %}
-                    <div class="border-t border-gray-700 my-2"></div>
-                    <span class="text-gray-400 block px-3 py-2 text-base font-medium">Welcome, {{ user.username }}</span>
-                    <form action="{% url 'logout' %}" method="post" class="block">
-                        {% csrf_token %}
-                        <button type="submit" class="w-full text-left bg-red-600 text-white block px-3 py-2 rounded-md text-base font-medium hover:bg-red-700 transition-colors">Log Out</button>
-                    </form>
-                {% else %}
-                    <a href="{% url 'login' %}" class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium transition-colors">Log In</a>
-                    <a href="{% url 'signup' %}" class="bg-teal-600 text-white block px-3 py-2 rounded-md text-base font-medium hover:bg-teal-700 transition-colors">Sign Up</a>
-                {% endif %}
             </div>
-        </div>
     </nav>
     <main class="flex-grow">
         <div class="px-4 sm:px-6 lg:px-8 py-6">
             <div id="toast-container" class="fixed top-4 right-4 z-50 w-full max-w-xs space-y-3">
-                {% if messages %}
-                    {% for message in messages %}
-                        <div class="toast-message w-full rounded-lg shadow-lg pointer-events-auto ring-1 ring-black ring-opacity-5 overflow-hidden
-                            {% if message.tags == 'success' %} bg-green-800 border border-green-600
-                            {% elif message.tags == 'info' %} bg-sky-800 border border-sky-600
-                            {% elif message.tags == 'warning' %} bg-yellow-800 border border-yellow-600
-                            {% else %} bg-red-800 border border-red-600 {% endif %}
-                            opacity-0 translate-x-full transform transition-all duration-300 ease-in-out"
-                            role="alert">
-                            <div class="p-4">
-                                <div class="flex items-start">
-                                    <div class="ml-3 w-0 flex-1">
-                                        <p class="text-sm font-medium text-gray-100">
-                                            {{ message }}
-                                        </p>
-                                    </div>
-                                    <div class="ml-4 flex-shrink-0 flex">
-                                        <button class="inline-flex rounded-md text-gray-300 hover:text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-700">
-                                            <span class="sr-only">Close</span>
-                                            <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                                                <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
-                                            </svg>
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    {% endfor %}
-                {% endif %}
-            </div>
+                </div>
         
             {% block content %}{% endblock %}
         </div>
@@ -128,46 +177,38 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
+            // --- Mobile menu logic ---
             const mobileMenuButton = document.getElementById('mobile-menu-button');
             const mobileMenu = document.getElementById('mobile-menu');
             const openIcon = document.getElementById('hamburger-icon-open');
             const closeIcon = document.getElementById('hamburger-icon-close');
 
-            mobileMenuButton.addEventListener('click', () => {
-                mobileMenu.classList.toggle('hidden');
-                openIcon.classList.toggle('hidden');
-                closeIcon.classList.toggle('hidden');
-            });
-        });
+            if (mobileMenuButton) {
+                mobileMenuButton.addEventListener('click', () => {
+                    mobileMenu.classList.toggle('hidden');
+                    openIcon.classList.toggle('hidden');
+                    closeIcon.classList.toggle('hidden');
+                });
+            }
 
-        document.addEventListener('DOMContentLoaded', () => {
+            // --- Toast notification logic ---
             const toastContainer = document.getElementById('toast-container');
             if (toastContainer) {
                 const toasts = toastContainer.querySelectorAll('.toast-message');
 
                 toasts.forEach((toast, index) => {
-                    // Function to remove the toast
                     const removeToast = () => {
                         toast.classList.add('opacity-0', 'translate-x-full');
-                        // Wait for the transition to finish before removing from the DOM
-                        toast.addEventListener('transitionend', () => {
-                            toast.remove();
-                        });
+                        toast.addEventListener('transitionend', () => toast.remove());
                     };
-
-                    // Animate the toast in
                     setTimeout(() => {
                         toast.classList.remove('opacity-0', 'translate-x-full');
-                    }, 100 * (index + 1)); // Stagger appearance
-
-                    // Set a timer to automatically remove the toast
-                    const autoRemoveTimeout = setTimeout(removeToast, 5000); // 5 seconds
-
-                    // Add click event to the close button
+                    }, 100 * (index + 1));
+                    const autoRemoveTimeout = setTimeout(removeToast, 5000);
                     const closeButton = toast.querySelector('button');
                     if (closeButton) {
                         closeButton.addEventListener('click', () => {
-                            clearTimeout(autoRemoveTimeout); // Stop the auto-remove timer
+                            clearTimeout(autoRemoveTimeout);
                             removeToast();
                         });
                     }

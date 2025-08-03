@@ -1,93 +1,88 @@
 {% extends 'base.html' %}
+{% load status_tags %}
 
 {% block title %}Donor: {{ donor.donor_id }}{% endblock %}
 
 {% block content %}
-<div class="max-w-6xl mx-auto p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+<div class="max-w-4xl mx-auto p-6 space-y-8">
     
-    <div class="md:col-span-2 space-y-8">
-        <div>
-            <h1 class="text-3xl font-bold text-gray-100">Donor: {{ donor.donor_id }}</h1>
-            <a href="{% url 'tracker:donor_list' %}" class="text-sm text-teal-400 hover:underline">&larr; Back to All Donors</a>
-        </div>
+    <div>
+        <h1 class="text-3xl font-bold text-gray-100">Donor: {{ donor.donor_id }}</h1>
+        <a href="{% url 'tracker:donor_list' %}" class="text-sm text-teal-400 hover:underline">&larr; Back to All Donors</a>
+    </div>
 
-        <div>
-            <h2 class="text-2xl font-semibold mb-4 text-gray-200">Associated Documents</h2>
-            <div class="bg-gray-800 p-4 rounded-lg shadow-md space-y-3 border border-gray-700">
-                {% for doc in documents %}
-                    <div class="flex justify-between items-center p-2 rounded hover:bg-gray-700">
-                        <div>
-                            <p class="font-medium text-gray-100">{{ doc.document_type|upper }}</p>
-                            <p class="text-xs text-gray-400">Uploaded: {{ doc.uploaded_at|date:"Y-m-d" }}</p>
-                        </div>
-                        <a href="{{ doc.file.url }}" 
-                            target="_blank" 
-                            rel="noopener noreferrer" 
-                            class="text-white bg-blue-600 px-3 py-1 rounded-md text-sm hover:bg-blue-700">
-                            View
-                        </a>
+    <div>
+        <h2 class="text-2xl font-semibold mb-4 text-gray-200">Associated Documents</h2>
+        <div class="bg-gray-800 p-4 rounded-lg shadow-md space-y-3 border border-gray-700">
+            {% for doc in documents %}
+                <div class="flex justify-between items-center p-2 rounded hover:bg-gray-700">
+                    <div>
+                        <p class="font-medium text-gray-100">{{ doc.document_type|upper }}</p>
+                        <p class="text-xs text-gray-400">Uploaded: {{ doc.uploaded_at|date:"Y-m-d" }}</p>
                     </div>
-                {% empty %}
-                    <p class="text-gray-400">No documents uploaded for this donor yet.</p>
-                {% endfor %}
-            </div>
-        </div>
-
-        <div>
-            <h2 class="text-2xl font-semibold mb-4 text-gray-200">Associated Lots</h2>
-            <div class="bg-gray-800 shadow-md rounded-lg overflow-hidden border border-gray-700">
-                <table class="min-w-full divide-y divide-gray-700">
-                    <thead class="bg-gray-700">
-                        <tr>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Lot ID</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Product Type</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Status</th>
-                        </tr>
-                    </thead>
-                    <tbody class="bg-gray-800 divide-y divide-gray-700">
-                        {% for lot in lots %}
-                            <tr class="hover:bg-gray-700">
-                                <td class="px-6 py-4 whitespace-nowrap">
-                                    <a href="{% url 'tracker:lot_detail' lot.id %}" class="text-teal-400 hover:text-teal-300 font-medium">
-                                        {{ lot.lot_id }}
-                                    </a>
-                                </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-gray-300">{{ lot.product_type }}</td>
-                                <td class="px-6 py-4 whitespace-nowrap">
-                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-900 text-green-200">
-                                        {{ lot.status }}
-                                    </span>
-                                </td>
-                            </tr>
-                        {% empty %}
-                            <tr>
-                                <td colspan="3" class="px-6 py-4 text-center text-gray-400">No lots found for this donor.</td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
+                    <a href="{{ doc.file.url }}" target="_blank" rel="noopener noreferrer" class="text-white bg-blue-600 px-3 py-1 rounded-md text-sm hover:bg-blue-700">View</a>
+                </div>
+            {% empty %}
+                <p class="text-gray-400">No documents uploaded for this donor yet.</p>
+            {% endfor %}
         </div>
     </div>
 
-    <div class="md:col-span-1">
-        <div class="bg-gray-800 p-6 rounded-lg shadow-md border border-gray-700">
-            <h3 class="text-xl font-semibold mb-4 text-gray-100">Upload a Document</h3>
-            <form method="post" enctype="multipart/form-data" class="space-y-4">
-                {% csrf_token %}
-                
-                <div>
-                    <label class="block text-sm font-medium text-gray-300">Document Type</label>
-                    {{ form.document_type }}
-                </div>
-                
-                <div>
-                    <label class="block text-sm font-medium text-gray-300">File</label>
-                    {{ form.file }}
-                </div>
-                
-                <button type="submit" class="w-full bg-teal-600 text-white px-4 py-2 rounded-md hover:bg-teal-700">Upload</button>
-            </form>
+    <div>
+        <h2 class="text-2xl font-semibold mb-4 text-gray-200">Lots</h2>
+        <div class="bg-gray-800 shadow-md rounded-lg overflow-hidden border border-gray-700">
+            <table class="min-w-full divide-y divide-gray-700">
+                <thead class="bg-gray-700">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Lot ID</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Product Type</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-gray-800 divide-y divide-gray-700">
+                    {% for lot in lots %}
+                        <tr class="hover:bg-gray-700">
+                            <td class="px-6 py-4 whitespace-nowrap"><a href="{% url 'tracker:lot_detail' lot.id %}" class="text-teal-400 hover:text-teal-300 font-medium">{{ lot.lot_id }}</a></td>
+                            <td class="px-6 py-4 whitespace-nowrap text-gray-300">{{ lot.product_type }}</td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="2" class="px-6 py-4 text-center text-gray-400">No lots found for this donor.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <div>
+        <h2 class="text-2xl font-semibold mb-4 text-gray-200">Labeling Lots</h2>
+        <div class="bg-gray-800 shadow-md rounded-lg overflow-hidden border border-gray-700">
+            <table class="min-w-full divide-y divide-gray-700">
+                <thead class="bg-gray-700">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Sub-Lot ID</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Product Type</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Due Date</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Status</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-gray-800 divide-y divide-gray-700">
+                    {% for sub_lot in sub_lots %}
+                        <tr class="hover:bg-gray-700">
+                            <td class="px-6 py-4 whitespace-nowrap"><a href="{% url 'tracker:sub_lot_detail' sub_lot.id %}" class="text-teal-400 hover:text-teal-300 font-medium">{{ sub_lot.sub_lot_id }}</a></td>
+                            <td class="px-6 py-4 whitespace-nowrap text-gray-300">{{ sub_lot.product_type|default:"N/A" }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-gray-300">{{ sub_lot.due_date|date:"m-d-Y"|default:"N/A" }}</td>
+                            <td class="px-6 py-2 whitespace-nowrap text-center">
+                                {% if sub_lot.status %}
+                                    <div class="w-full py-2 px-3 text-white font-bold text-xs rounded {{ sub_lot.status|status_fill_color }}">{{ sub_lot.status }}</div>
+                                {% else %}
+                                    <span class="text-gray-500">N/A</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="4" class="px-6 py-4 text-center text-gray-400">No labeling lots found for this donor.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
     </div>
 </div>

@@ -12,6 +12,7 @@ urlpatterns = [
     path('donor/<int:donor_id>/', views.donor_detail, name='donor_detail'),
     path('lot/<int:lot_id>/', views.lot_detail, name='lot_detail'),
     path('sub-lot/<int:sub_lot_id>/', views.sub_lot_detail, name='sub_lot_detail'),
+    path('search/', views.global_search, name='global_search'),
 
     # 🔹 Reports
     path('reports/', views.report_list, name='report_list'),
@@ -19,6 +20,7 @@ urlpatterns = [
     path('reports/<int:report_id>/delete/', views.delete_report, name='delete_report'),
     path('reports/labeled-lots/', views.labeled_lot_list, name='labeled_lot_list'),
     path('reports/interactive-data/', views.interactive_report_data, name='interactive_report_data'),
+    path('reports/yield/', views.yield_report, name='yield_report'),
     # path('reports/export/pdf/', views.export_reports_pdf, name='export_reports_pdf'),
 
     # 🔹 Admin Dashboard

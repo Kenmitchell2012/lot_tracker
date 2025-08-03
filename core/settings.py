@@ -156,3 +156,6 @@ MEDIA_URL = '/media/'
 # The absolute path to the folder where they're stored
 # Change this to point to your processed documents folder
 MEDIA_ROOT = BASE_DIR / 'scanned_documents' / 'processed'
+
+# settings.py
+

@@ -31,12 +31,12 @@
 
         <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
             <h2 class="text-xl font-semibold mb-4 text-gray-200 text-center">Labeled Grafts Trend</h2>
-            <div class="relative h-80"><canvas id="labeledTrendChart"></canvas></div>
+            <div class="relative h-96"><canvas id="labeledTrendChart"></canvas></div>
         </div>
 
         <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
             <h2 class="text-xl font-semibold mb-4 text-gray-200 text-center">FPP Inspected Trend</h2>
-            <div class="relative h-80"><canvas id="fppTrendChart"></canvas></div>
+            <div class="relative h-96"><canvas id="fppTrendChart"></canvas></div>
         </div>
     </div>
 </div>
@@ -45,17 +45,15 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // --- THIS IS THE FIX ---
-    // Safely get the JSON data from the new script tag
     const reportDataElement = document.getElementById('report-data-json');
     const reportData = JSON.parse(reportDataElement.textContent);
-    // --- END FIX ---
 
     const packagedTrend = reportData.packaged_trend || [];
     const labeledTrend = reportData.labeled_trend || [];
     const fppTrend = reportData.fpp_trend || [];
 
-    const createTrendChart = (canvasId, chartLabel, data, color) => {
+    // The createTrendChart function has been updated
+    const createTrendChart = (canvasId, chartLabel, data, color, borderColor) => {
         const ctx = document.getElementById(canvasId);
         if (!ctx || !data || data.length === 0) {
             ctx.parentNode.innerHTML = '<p class="text-center text-gray-500 mt-24">No data available.</p>';
@@ -64,34 +62,84 @@ document.addEventListener('DOMContentLoaded', function() {
 
         const labels = data.map(item => {
             const date = new Date(item.month + 'T00:00:00');
-            return date.toLocaleString('default', { month: 'short' }) + '-' + date.getFullYear().toString().substr(-2);
+            return date.toLocaleString('default', { month: 'short', year: '2-digit' });
         });
         const values = data.map(item => item.total);
 
         new Chart(ctx, {
-            type: 'bar',
+            // 1. Changed chart type to 'line' for better trend visualization
+            type: 'line',
             data: {
                 labels: labels,
-                datasets: [{ label: chartLabel, data: values, backgroundColor: color }]
+                datasets: [{
+                    label: chartLabel,
+                    data: values,
+                    backgroundColor: color,       // Fill color under the line
+                    borderColor: borderColor,   // Line color
+                    borderWidth: 3,
+                    pointBackgroundColor: borderColor,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                    tension: 0.3,               // Makes the line smooth
+                    fill: true,
+                }]
             },
             options: {
                 maintainAspectRatio: false,
                 responsive: true,
                 scales: {
-                    y: { beginAtZero: true, ticks: { color: '#9ca3af' }, grid: { color: '#4b5563' } },
-                    x: { ticks: { color: '#9ca3af' }, font: { size: 12 } }
+                    y: { 
+                        beginAtZero: true, 
+                        ticks: { color: '#9ca3af' }, 
+                        grid: { color: '#4b5563' } 
+                    },
+                    x: { 
+                        ticks: { color: '#9ca3af' }, 
+                        grid: { display: false } 
+                    }
                 },
                 plugins: { 
-                    legend: { display: false }
+                    legend: { display: false },
+                    // 2. Added configuration for the datalabels plugin
+                    datalabels: {
+                        anchor: 'end',
+                        align: 'end',
+                        color: '#e5e7eb', // Light text color for labels
+                        font: {
+                            weight: 'bold',
+                            size: 12,
+                        },
+                        // Format the number with commas (e.g., 10000 -> 10,000)
+                        formatter: (value) => value.toLocaleString(),
+                        // Add a subtle shadow for readability
+                        textStrokeColor: 'black',
+                        textStrokeWidth: 2,
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.dataset.label || '';
+                                if (label) {
+                                    label += ': ';
+                                }
+                                if (context.parsed.y !== null) {
+                                    label += context.parsed.y.toLocaleString();
+                                }
+                                return label;
+                            }
+                        }
+                    }
                 }
-            }
+            },
+            // 3. Registered the datalabels plugin for this chart instance
+            plugins: [ChartDataLabels],
         });
     };
 
-    // Create all three separate trend charts
-    createTrendChart('packagedTrendChart', 'Total Packaged', packagedTrend, 'rgba(20, 184, 166, 0.6)');
-    createTrendChart('labeledTrendChart', 'Total Labeled', labeledTrend, 'rgba(59, 130, 246, 0.6)');
-    createTrendChart('fppTrendChart', 'Total FPP Inspected', fppTrend, 'rgba(139, 92, 246, 0.6)');
+    // Call the function with updated colors for line charts
+    createTrendChart('packagedTrendChart', 'Total Packaged', packagedTrend, 'rgba(20, 184, 166, 0.2)', 'rgba(20, 184, 166, 1)');
+    createTrendChart('labeledTrendChart', 'Total Labeled', labeledTrend, 'rgba(59, 130, 246, 0.2)', 'rgba(59, 130, 246, 1)');
+    createTrendChart('fppTrendChart', 'Total FPP Inspected', fppTrend, 'rgba(139, 92, 246, 0.2)', 'rgba(139, 92, 246, 1)');
 });
 </script>
 {% endblock %}

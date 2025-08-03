@@ -1,0 +1,34 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}Yield Report{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto p-6">
+    <h1 class="text-3xl font-bold text-gray-100 mb-6">Lot Yield Report</h1>
+    <div class="bg-gray-800 shadow-md rounded-lg overflow-hidden border border-gray-700">
+        <table class="min-w-full divide-y divide-gray-700">
+            <thead class="bg-gray-700">
+                <tr>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase">Lot ID</th>
+                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-300 uppercase">Initial Qty</th>
+                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-300 uppercase">Labeled Qty</th>
+                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-300 uppercase">Yield %</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-700">
+                {% for lot in lots_with_yield %}
+                    <tr class="hover:bg-gray-700/50">
+                        <td class="px-6 py-4 font-medium text-teal-400"><a href="{% url 'tracker:lot_detail' lot.id %}">{{ lot.lot_id }}</a></td>
+                        <td class="px-6 py-4 text-right text-white">{{ lot.quantity|intcomma }}</td>
+                        <td class="px-6 py-4 text-right text-white">{{ lot.total_labeled_quantity|intcomma|default:"0" }}</td>
+                        <td class="px-6 py-4 text-right font-bold {% if lot.yield_percentage > 95 %}text-green-400{% elif lot.yield_percentage < 80 %}text-red-400{% else %}text-yellow-400{% endif %}">
+                            {{ lot.yield_percentage|floatformat:2 }}%
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %} 
