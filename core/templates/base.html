@@ -2,218 +2,243 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>{% block title %}Lot Tracker{% endblock %}</title>
 
+    <!-- External -->
     <link rel="stylesheet" href="https://unpkg.com/dropzone@5/dist/min/dropzone.min.css" />
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/htmx.org@1.9.10" defer></script>
     <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
 
     <style>
-        .messages-wrapper {
-            min-height: 72px; 
-        }
+      /* small visual helpers */
+      .messages-wrapper { min-height: 72px; }
+      [x-cloak] { display: none !important; }
+      /* for smooth nav blur behind */
+      .glass { background: rgba(17,24,39,0.72); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
     </style>
 </head>
-<body class="bg-gray-900 text-gray-200 flex flex-col min-h-screen">
-    
-    <nav class="sticky top-0 z-50 bg-gray-900/80 backdrop-blur-sm border-b border-gray-700/60 shadow-lg">
-        <div class="px-4 sm:px-6 lg:px-8">
+<body class="bg-gray-900 text-gray-200 min-h-screen flex flex-col">
+
+    <!-- NAV: Alpine handles open states & search -->
+    <nav x-data="nav()" class="sticky top-0 z-50 glass border-b border-gray-700 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex items-center justify-between h-16">
-                <div class="flex-shrink-0">
-                    <a href="{% url 'tracker:command_center' %}" class="text-xl font-semibold text-white hover:text-teal-300 transition-colors">Lot History Tracker</a>
+                <!-- left: logo / home -->
+                <div class="flex items-center gap-4">
+                    <a href="{% url 'tracker:command_center' %}" class="flex items-center gap-3">
+                        <!-- simple svg logo -->
+                        <svg class="h-8 w-8 text-teal-400" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                            <rect x="2" y="3" width="20" height="18" rx="3" stroke="currentColor" stroke-width="1.5"></rect>
+                            <path d="M7 9h10M7 13h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        <span class="text-lg font-semibold text-white hover:text-teal-300 transition-colors">Lot History Tracker</span>
+                    </a>
                 </div>
 
-                <div class="hidden md:block">
-                    <div class="ml-10 flex items-center space-x-4">
+                <!-- center: desktop search -->
+                <div class="hidden md:flex md:flex-1 md:justify-center">
+                    <div class="w-full max-w-xl">
+                        <label for="nav-search" class="sr-only">Search</label>
+                        <div class="relative" x-data="desktopSearch()" @keydown.window.escape="close()" @click.away="close()">
+                            <input id="nav-search"
+                                   x-model="query"
+                                   @input.debounce.300ms="fetchResults()"
+                                   @focus="open = query.length >= 2"
+                                   type="search"
+                                   placeholder="Search lots, donors, grafts..."
+                                   class="w-full rounded-lg bg-gray-800 text-gray-100 placeholder-gray-400 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+                                   autocomplete="off"
+                                   aria-autocomplete="list"
+                                   aria-controls="search-results"
+                                   aria-expanded="false"
+                                   />
+
+                            <button x-show="!open && query === ''" @click.prevent=" $el.previousElementSibling.focus()"
+                                    class="absolute right-2 top-2 text-gray-400 hover:text-teal-300" aria-hidden="true">
+                                <!-- magnifier -->
+                                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M17 11a6 6 0 11-12 0 6 6 0 0112 0z"/></svg>
+                            </button>
+
+                            <!-- dropdown -->
+                            <div x-show="open" x-cloak x-transition:enter="transition ease-out duration-150"
+                                 x-transition:enter-start="opacity-0 translate-y-1"
+                                 x-transition:enter-end="opacity-100 translate-y-0"
+                                 x-transition:leave="transition ease-in duration-100"
+                                 x-transition:leave-start="opacity-100 translate-y-0"
+                                 x-transition:leave-end="opacity-0 translate-y-1"
+                                 id="search-results"
+                                 class="absolute left-0 right-0 mt-2 bg-gray-800 border border-gray-700 rounded-lg shadow-lg overflow-hidden z-50"
+                                 role="listbox"
+                                 >
+                                <ul class="max-h-80 overflow-y-auto">
+                                    <template x-if="loading">
+                                        <li class="px-4 py-3 text-sm text-gray-400">Searching...</li>
+                                    </template>
+
+                                    <template x-if="!loading && results.length === 0">
+                                        <li class="px-4 py-3 text-sm text-gray-400">No results for "<span x-text="query"></span>"</li>
+                                    </template>
+
+                                    <template x-for="(r, i) in results" :key="i">
+                                        <li>
+                                            <a :href="r.url"
+                                               @mouseenter="selected = i"
+                                               :class="{ 'bg-gray-700': selected === i }"
+                                               class="flex justify-between items-center px-4 py-3 hover:bg-gray-700 text-sm text-gray-200">
+                                                <div class="truncate">
+                                                    <div class="font-medium" x-text="r.title"></div>
+                                                    <div class="text-xs text-gray-400 truncate" x-text="r.subtitle"></div>
+                                                </div>
+                                                <span class="ml-3 text-xs px-2 py-0.5 rounded-full bg-gray-700 text-gray-300" x-text="r.type"></span>
+                                            </a>
+                                        </li>
+                                    </template>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- right: links / profile -->
+                <div class="flex items-center gap-3">
+                    <!-- Desktop links -->
+                    <div class="hidden md:flex items-center space-x-2">
                         {% if user.is_authenticated %}
-                            
-                            <div x-data="{
-                                    query: '',
-                                    results: [],
-                                    open: false,
-                                    loading: false,
-                                    selectedIndex: -1,
-                                    abortController: null,
-                                    fetchResults() {
-                                        if (this.query.length < 2) {
-                                            this.results = [];
-                                            this.open = false;
-                                            return;
-                                        }
-                                        this.loading = true;
-                                        this.open = true;
-                                        if (this.abortController) {
-                                            this.abortController.abort();
-                                        }
-                                        this.abortController = new AbortController();
-                                        fetch(`/search/?q=${this.query}`, { signal: this.abortController.signal })
-                                            .then(response => response.json())
-                                            .then(data => {
-                                                this.results = data.results;
-                                                this.selectedIndex = -1;
-                                            })
-                                            .catch(error => {
-                                                if (error.name === 'AbortError') return;
-                                                console.error('Search fetch failed:', error);
-                                                this.open = false;
-                                            })
-                                            .finally(() => {
-                                                this.loading = false;
-                                            });
-                                    },
-                                    moveDown() {
-                                        if (!this.open || this.results.length === 0) return;
-                                        this.selectedIndex = (this.selectedIndex + 1) % this.results.length;
-                                        this.$nextTick(() => { this.$refs.results.children[this.selectedIndex].scrollIntoView({ block: 'nearest' }); });
-                                    },
-                                    moveUp() {
-                                        if (!this.open || this.results.length === 0) return;
-                                        this.selectedIndex = (this.selectedIndex - 1 + this.results.length) % this.results.length;
-                                        this.$nextTick(() => { this.$refs.results.children[this.selectedIndex].scrollIntoView({ block: 'nearest' }); });
-                                    },
-                                    selectResult() {
-                                        if (this.selectedIndex > -1) {
-                                            window.location.href = this.results[this.selectedIndex].url;
-                                        }
-                                    }
-                                }"
-                                @click.away="open = false" 
-                                class="relative">
-                                
-                                <input type="text" 
-                                        x-model="query" 
-                                        @input.debounce.300ms="fetchResults()"
-                                        @focus="if (query.length >= 2) open = true"
-                                        @keydown.arrow-down.prevent="moveDown()"
-                                        @keydown.arrow-up.prevent="moveUp()"
-                                        @keydown.enter.prevent="selectResult()"
-                                        @keydown.escape.prevent="open = false; query = ''"
-                                        placeholder="Search..."
-                                        class="bg-gray-700 text-white w-48 px-3 py-2 rounded-md text-sm font-medium focus:ring-2 focus:ring-cyan-500 focus:outline-none">
-                                
-                                <div x-show="open" x-transition class="absolute mt-2 w-72 bg-gray-800 border border-gray-700 rounded-md shadow-lg z-50 right-0">
-                                    <ul class="py-1 max-h-96 overflow-y-auto" x-ref="results">
-                                        <template x-if="loading">
-                                            <li class="px-4 py-2 text-sm text-gray-400">Loading...</li>
-                                        </template>
-                                        <template x-if="!loading && results.length === 0 && query.length >= 2">
-                                            <li class="px-4 py-2 text-sm text-gray-400">No results found for "<span x-text="query"></span>"</li>
-                                        </template>
-                                        <template x-if="!loading && results.length > 0">
-                                            <template x-for="(result, index) in results" :key="index">
-                                                <li>
-                                                    <a :href="result.url" 
-                                                       :class="{ 'bg-gray-700': selectedIndex === index }"
-                                                       class="flex justify-between items-center px-4 py-2 text-sm text-gray-200 hover:bg-gray-700">
-                                                        <span x-text="result.text"></span>
-                                                        <span x-text="result.type" class="text-xs bg-gray-600 text-gray-300 px-2 py-0.5 rounded-full"></span>
-                                                    </a>
-                                                </li>
-                                            </template>
-                                        </template>
-                                    </ul>
+                            {% if user.is_staff %}
+                                <a href="{% url 'tracker:admin_dashboard' %}" class="px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white">Dashboard</a>
+                                <a href="{% url 'tracker:report_list' %}" class="px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white">Reports</a>
+                                <a href="{% url 'tracker:yield_report' %}" class="px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white">Yield</a>
+                                <a href="{% url 'tracker:manage_boards' %}" class="px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white">Boards</a>
+                                <a href="{% url 'tracker:labeled_lot_list' %}" class="px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white">Labeled Lots</a>
+                                <a href="{% url 'tracker:donor_list' %}" class="px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white">Donors</a>
+                            {% endif %}
+
+                            <!-- profile dropdown -->
+                            <div class="relative" x-data="{ openProfile: false }" @keydown.escape.stop="openProfile = false">
+                                <button @click="openProfile = !openProfile" class="flex items-center gap-2 px-3 py-1.5 rounded-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-400">
+                                    <div class="h-8 w-8 rounded-full bg-gray-700 flex items-center justify-center text-sm font-semibold text-gray-200">
+                                        {{ user.username|slice:":1"|upper }}
+                                    </div>
+                                    <span class="text-sm text-gray-200 hidden lg:inline">Hi, {{ user.username }}</span>
+                                    <svg class="h-4 w-4 text-gray-300" viewBox="0 0 20 20" fill="none" stroke="currentColor"><path d="M6 8l4 4 4-4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                                </button>
+
+                                <div x-show="openProfile" x-cloak x-transition class="origin-top-right absolute right-0 mt-2 w-56 rounded-md shadow-lg bg-gray-800 border border-gray-700 ring-1 ring-black ring-opacity-5 z-50">
+                                    <div class="py-1">
+                                        <a href="{% url 'tracker:command_center' %}" class="block px-4 py-2 text-sm text-gray-200 hover:bg-gray-700">Command Center</a>
+                                        <a href="{% url 'tracker:donor_list' %}" class="block px-4 py-2 text-sm text-gray-200 hover:bg-gray-700">Donors</a>
+                                        <div class="border-t border-gray-700 my-1"></div>
+                                        <form action="{% url 'logout' %}" method="post" class="px-4 py-2">
+                                            {% csrf_token %}
+                                            <button type="submit" class="w-full text-left text-sm text-red-400 hover:text-red-300">Sign out</button>
+                                        </form>
+                                    </div>
                                 </div>
                             </div>
-
-                            {% if user.is_staff %}
-                                <a href="{% url 'tracker:admin_dashboard' %}" class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium">Dashboard</a>
-                                <a href="{% url 'tracker:report_list' %}" class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium">Reports</a>
-                                <a href="{% url 'tracker:yield_report' %}" class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium">Yield Report</a>
-                                <a href="{% url 'tracker:manage_boards' %}" class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium">Manage Boards</a>
-                                <a href="{% url 'tracker:labeled_lot_list' %}" class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium">Labeled Lots</a>
-                                <a href="{% url 'tracker:donor_list' %}" class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium">Donors</a>
-                            {% endif %}
-                            
-                            <div class="ml-3 relative flex items-center">
-                                <span class="text-gray-400 px-3 py-2 text-sm">Welcome, {{ user.username }}</span>
-                                <form action="{% url 'logout' %}" method="post" class="inline">
-                                    {% csrf_token %}
-                                    <button type="submit" class="bg-red-600 text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-red-700">Log Out</button>
-                                </form>
-                            </div>
                         {% else %}
-                            <a href="{% url 'login' %}" class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium">Log In</a>
+                            <a href="{% url 'login' %}" class="px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white">Log In</a>
                             <a href="{% url 'signup' %}" class="bg-teal-600 text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-teal-700">Sign Up</a>
                         {% endif %}
                     </div>
-                </div>
 
-                <div class="-mr-2 flex md:hidden">
-                    <button id="mobile-menu-button" type="button" class="bg-gray-800 inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-white hover:bg-gray-700 focus:outline-none">
-                        <span class="sr-only">Open main menu</span>
-                        <svg id="hamburger-icon-open" class="block h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
-                        <svg id="hamburger-icon-close" class="hidden h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                    </button>
+                    <!-- Mobile buttons: search & hamburger -->
+                    <div class="flex md:hidden items-center gap-2">
+                        <!-- mobile search toggle -->
+                        <button @click="openMobileSearch()" aria-label="Open search" class="p-2 rounded-md hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-400">
+                            <svg class="h-5 w-5 text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M17 11a6 6 0 11-12 0 6 6 0 0112 0z"/></svg>
+                        </button>
+
+                        <button @click="toggleMobileMenu()" id="mobile-menu-button" aria-expanded="false" aria-controls="mobile-menu" class="p-2 rounded-md hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-teal-400">
+                            <svg x-show="!mobileOpen" class="h-6 w-6 text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+                            <svg x-show="mobileOpen" class="h-6 w-6 text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <div class="hidden md:hidden" id="mobile-menu">
-            <div class="px-2 pt-2 pb-3 space-y-1 sm:px-3">
+        <!-- Mobile menu panel -->
+        <div x-show="mobileOpen" x-cloak x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 -translate-y-2" x-transition:enter-end="opacity-100 translate-y-0" class="md:hidden">
+            <div id="mobile-menu" class="px-2 pt-2 pb-3 space-y-1">
                 {% if user.is_authenticated %}
-                    <div class="p-2">
-                         <input type="text" placeholder="Search..." class="w-full bg-gray-700 text-white px-3 py-2 rounded-md text-sm font-medium" disabled>
-                         <p class="text-xs text-gray-500 mt-1">Full search on desktop.</p>
+                    <div class="px-3 py-2">
+                        <div class="text-sm text-gray-300 font-medium">Welcome, {{ user.username }}</div>
+                        <div class="mt-2">
+                            <a href="{% url 'tracker:command_center' %}" class="block px-3 py-2 rounded-md text-base text-gray-200 hover:bg-gray-700">Command Center</a>
+                            {% if user.is_staff %}
+                                <a href="{% url 'tracker:admin_dashboard' %}" class="block px-3 py-2 rounded-md text-base text-gray-200 hover:bg-gray-700">Dashboard</a>
+                                <a href="{% url 'tracker:report_list' %}" class="block px-3 py-2 rounded-md text-base text-gray-200 hover:bg-gray-700">Reports</a>
+                                <a href="{% url 'tracker:labeled_lot_list' %}" class="block px-3 py-2 rounded-md text-base text-gray-200 hover:bg-gray-700">Labeled Lots</a>
+                                <a href="{% url 'tracker:donor_list' %}" class="block px-3 py-2 rounded-md text-base text-gray-200 hover:bg-gray-700">Donors</a>
+                            {% endif %}
+                        </div>
+                        <div class="mt-3 border-t border-gray-700 pt-3">
+                            <form action="{% url 'logout' %}" method="post">
+                                {% csrf_token %}
+                                <button type="submit" class="w-full text-left px-3 py-2 rounded-md bg-red-600 text-white hover:bg-red-700">Sign out</button>
+                            </form>
+                        </div>
                     </div>
-
-                    {% if user.is_staff %}
-                        <a href="{% url 'tracker:admin_dashboard' %}" class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium">Dashboard</a>
-                        <a href="{% url 'tracker:report_list' %}" class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium">Reports</a>
-                        <a href="{% url 'tracker:yield_report' %}" class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium">Yield Report</a>
-                        <a href="{% url 'tracker:manage_boards' %}" class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium">Manage Boards</a>
-                        <a href="{% url 'tracker:labeled_lot_list' %}" class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium">Labeled Lots</a>
-                        <a href="{% url 'tracker:donor_list' %}" class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium">Donors</a>
-                    {% endif %}
-                    <div class="border-t border-gray-700 my-2"></div>
-                    <span class="text-gray-400 block px-3 py-2 text-base font-medium">Welcome, {{ user.username }}</span>
-                    <form action="{% url 'logout' %}" method="post" class="block">
-                        {% csrf_token %}
-                        <button type="submit" class="w-full text-left bg-red-600 text-white block px-3 py-2 rounded-md text-base font-medium hover:bg-red-700">Log Out</button>
-                    </form>
                 {% else %}
-                    <a href="{% url 'login' %}" class="text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium">Log In</a>
-                    <a href="{% url 'signup' %}" class="bg-teal-600 text-white block px-3 py-2 rounded-md text-base font-medium hover:bg-teal-700">Sign Up</a>
+                    <a href="{% url 'login' %}" class="block px-3 py-2 rounded-md text-base text-gray-200 hover:bg-gray-700">Log In</a>
+                    <a href="{% url 'signup' %}" class="block px-3 py-2 rounded-md text-base bg-teal-600 text-white hover:bg-teal-700">Sign Up</a>
                 {% endif %}
             </div>
         </div>
+
+        <!-- Mobile fullscreen search -->
+        <div x-show="mobileSearchOpen" x-cloak x-transition class="fixed inset-0 z-40 bg-black/50 flex items-start pt-20">
+            <div class="w-full max-w-2xl mx-auto p-4">
+                <div class="bg-gray-800 rounded-lg border border-gray-700">
+                    <div class="flex items-center gap-2 p-3">
+                        <input x-model="mobileQuery" @input.debounce.300ms="fetchMobileResults()" @keydown.escape="closeMobileSearch()" placeholder="Search lots, donors, grafts..." class="flex-1 bg-transparent text-gray-100 placeholder-gray-400 px-3 py-2 rounded-md focus:outline-none" />
+                        <button @click="closeMobileSearch()" class="p-2 rounded-md text-gray-300 hover:bg-gray-700"><span class="sr-only">Close</span>
+                            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                        </button>
+                    </div>
+
+                    <div class="border-t border-gray-700 max-h-80 overflow-y-auto">
+                        <template x-if="mobileLoading">
+                            <div class="p-4 text-sm text-gray-400">Searching...</div>
+                        </template>
+                        <template x-if="!mobileLoading && mobileResults.length === 0">
+                            <div class="p-4 text-sm text-gray-400">No results</div>
+                        </template>
+                        <template x-for="(r,i) in mobileResults" :key="i">
+                            <a :href="r.url" @click="closeMobileSearch()" class="block px-4 py-3 hover:bg-gray-700 text-sm text-gray-200">
+                                <div class="font-medium" x-text="r.title"></div>
+                                <div class="text-xs text-gray-400" x-text="r.subtitle"></div>
+                            </a>
+                        </template>
+                    </div>
+                </div>
+            </div>
+        </div>
     </nav>
-    <main class="flex-grow">
+
+    <!-- MAIN -->
+    <main class="flex-1">
         <div class="px-4 sm:px-6 lg:px-8 py-6">
-            <div id="toast-container" class="fixed top-4 right-4 z-50 w-full max-w-xs space-y-3">
+            <!-- Toasts -->
+            <div id="toast-container" class="fixed top-4 right-4 z-50 w-full max-w-xs space-y-3 pointer-events-none">
                 {% if messages %}
                     {% for message in messages %}
-                        <div class="toast-message w-full rounded-lg shadow-lg pointer-events-auto ring-1 ring-black ring-opacity-5 overflow-hidden
-                            {% if message.tags == 'success' %} bg-green-800 border border-green-600
-                            {% elif message.tags == 'info' %} bg-sky-800 border border-sky-600
-                            {% elif message.tags == 'warning' %} bg-yellow-800 border border-yellow-600
-                            {% else %} bg-red-800 border border-red-600 {% endif %}
-                            opacity-0 translate-x-full transform transition-all duration-300 ease-in-out"
-                            role="alert">
-                            <div class="p-4">
-                                <div class="flex items-start">
-                                    <div class="ml-3 w-0 flex-1">
-                                        <p class="text-sm font-medium text-gray-100">
-                                            {{ message }}
-                                        </p>
-                                    </div>
-                                    <div class="ml-4 flex-shrink-0 flex">
-                                        <button class="inline-flex rounded-md text-gray-300 hover:text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-700">
-                                            <span class="sr-only">Close</span>
-                                            <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                                                <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
-                                            </svg>
-                                        </button>
-                                    </div>
-                                </div>
+                        <div class="toast-message pointer-events-auto rounded-lg shadow-lg overflow-hidden ring-1 ring-black ring-opacity-5 transform transition-all duration-300 translate-x-full opacity-0
+                            {% if 'success' in message.tags %} bg-green-800 border border-green-600 {% elif 'info' in message.tags %} bg-sky-800 border border-sky-600 {% elif 'warning' in message.tags %} bg-yellow-800 border border-yellow-600 {% else %} bg-red-800 border border-red-600 {% endif %}">
+                            <div class="p-4 flex items-start gap-3">
+                                <div class="flex-1 text-sm font-medium text-gray-100">{{ message }}</div>
+                                <button class="ml-2 text-gray-300 hover:text-white close-toast" aria-label="Dismiss">
+                                    <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
+                                </button>
                             </div>
                         </div>
                     {% endfor %}
                 {% endif %}
             </div>
-        
+
             {% block content %}{% endblock %}
         </div>
     </main>
@@ -222,50 +247,116 @@
         <p>&copy; {% now "Y" %} Kendrick Mitchell Production</p>
     </footer>
 
+    <!-- libs -->
     <script src="https://unpkg.com/dropzone@5/dist/min/dropzone.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0" defer></script>
 
+    <!-- Inline scripts -->
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            // --- Mobile menu logic ---
-            const mobileMenuButton = document.getElementById('mobile-menu-button');
-            const mobileMenu = document.getElementById('mobile-menu');
-            const openIcon = document.getElementById('hamburger-icon-open');
-            const closeIcon = document.getElementById('hamburger-icon-close');
+      /* NAV + SEARCH Alpine factory */
+      function nav(){
+        return {
+          mobileOpen: false,
+          mobileSearchOpen: false,
+          mobileQuery: '',
+          mobileResults: [],
+          mobileLoading: false,
+          openMobileSearch() {
+            this.mobileSearchOpen = true;
+            this.$nextTick(() => {
+              // focus first input if any
+              const el = document.querySelector('[x-model="mobileQuery"]') || document.querySelector('#nav-search');
+              if (el) el.focus();
+            });
+          },
+          closeMobileSearch(){ this.mobileSearchOpen = false; this.mobileQuery=''; this.mobileResults=[]; },
+          toggleMobileMenu(){ this.mobileOpen = !this.mobileOpen; },
+        }
+      }
 
-            if (mobileMenuButton) {
-                mobileMenuButton.addEventListener('click', () => {
-                    mobileMenu.classList.toggle('hidden');
-                    openIcon.classList.toggle('hidden');
-                    closeIcon.classList.toggle('hidden');
-                });
-            }
+      /* Desktop search component (Alpine scoped) */
+      document.addEventListener('alpine:init', () => {
+        Alpine.data('desktopSearch', () => ({
+          query: '',
+          results: [],
+          loading: false,
+          open: false,
+          selected: -1,
+          abortController: null,
+          fetchResults() {
+            if (!this.query || this.query.length < 2) { this.results = []; this.open=false; return; }
+            this.loading = true;
+            this.open = true;
+            if (this.abortController) this.abortController.abort();
+            this.abortController = new AbortController();
+            fetch(`/search/?q=${encodeURIComponent(this.query)}`, { signal: this.abortController.signal })
+              .then(res => res.ok ? res.json() : Promise.reject('Bad response'))
+              .then(data => {
+                this.results = data.results || [];
+                this.selected = -1;
+              })
+              .catch(err => {
+                if (err.name === 'AbortError') return;
+                console.error('Search error:', err);
+                this.results = [];
+              })
+              .finally(()=> { this.loading = false; });
+          },
+          close(){ this.open=false; this.selected=-1; },
+        }));
+      });
 
-            // --- Toast notification logic ---
-            const toastContainer = document.getElementById('toast-container');
-            if (toastContainer) {
-                const toasts = toastContainer.querySelectorAll('.toast-message');
-
-                toasts.forEach((toast, index) => {
-                    const removeToast = () => {
-                        toast.classList.add('opacity-0', 'translate-x-full');
-                        toast.addEventListener('transitionend', () => toast.remove());
-                    };
-                    setTimeout(() => {
-                        toast.classList.remove('opacity-0', 'translate-x-full');
-                    }, 100 * (index + 1));
-                    const autoRemoveTimeout = setTimeout(removeToast, 10000);
-                    const closeButton = toast.querySelector('button');
-                    if (closeButton) {
-                        closeButton.addEventListener('click', () => {
-                            clearTimeout(autoRemoveTimeout);
-                            removeToast();
-                        });
-                    }
-                });
-            }
+      /* Mobile search results fetcher (uses simple global methods for brevity) */
+      document.addEventListener('DOMContentLoaded', () => {
+        // Tie the mobile query input to fetch behaviour
+        let mobileTimeout = null;
+        document.addEventListener('input', (e) => {
+          if (e.target && e.target.matches('[x-model="mobileQuery"]')) {
+            const val = e.target.value;
+            const comp = document.querySelector('[x-data="nav()"]'); // not used for data binding; we use fetch directly
+            const ctx = e.target;
+            const container = ctx.closest('[x-cloak]') || document;
+            // simple debounce
+            clearTimeout(mobileTimeout);
+            mobileTimeout = setTimeout(() => {
+              // find the Alpine component state
+              const root = document.querySelector('[x-data="nav()"]');
+              if (!root) return;
+              const alpineComponent = root.__x.$data;
+              alpineComponent.mobileLoading = true;
+              fetch(`/search/?q=${encodeURIComponent(val)}`)
+                .then(r => r.ok ? r.json() : Promise.reject('nope'))
+                .then(data => {
+                  alpineComponent.mobileResults = data.results || [];
+                })
+                .catch(err => {
+                  alpineComponent.mobileResults = [];
+                })
+                .finally(() => alpineComponent.mobileLoading = false);
+            }, 300);
+          }
         });
+
+        // Toast transitions
+        const toastContainer = document.getElementById('toast-container');
+        if (toastContainer) {
+          const toasts = toastContainer.querySelectorAll('.toast-message');
+          toasts.forEach((t, i) => {
+            setTimeout(() => {
+              t.classList.remove('translate-x-full','opacity-0');
+              t.classList.add('translate-x-0','opacity-100');
+            }, 100 * (i + 1));
+            const autoRemove = setTimeout(() => removeToast(t), 10000);
+            const btn = t.querySelector('.close-toast');
+            if (btn) btn.addEventListener('click', () => { clearTimeout(autoRemove); removeToast(t); });
+          });
+        }
+        function removeToast(t){
+          t.classList.add('translate-x-full','opacity-0');
+          t.addEventListener('transitionend', () => t.remove(), { once: true });
+        }
+      });
     </script>
 
     {% block scripts %}{% endblock %}

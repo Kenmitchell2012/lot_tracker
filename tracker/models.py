@@ -16,13 +16,27 @@ class Lot(models.Model):
     donor = models.ForeignKey(Donor, related_name='lots', on_delete=models.CASCADE)
     lot_id = models.CharField(max_length=255, unique=True)
     product_type = models.CharField(max_length=100, blank=True)
+    product_code = models.CharField(max_length=100, blank=True, null=True)
+    graft_id_number = models.TextField(blank=True, null=True)
     
-    # --- All Data Fields ---
+    # --- Processing Status Fields ---
+    status = models.CharField(max_length=100, blank=True, null=True)
+    sterilization = models.CharField(max_length=100, blank=True, null=True)
+    qc_out_number = models.IntegerField(blank=True, null=True)
+    qc_out_reason = models.CharField(max_length=255, blank=True, null=True)
+    da_val = models.BooleanField(default=False, help_text="Represents the 'DA / VAL' checkbox")
+    
+    # --- Packaging and Quantity Fields ---
     packaged_by = models.CharField(max_length=255, blank=True, null=True)
     packaged_date = models.DateField(blank=True, null=True)
     quantity = models.IntegerField(blank=True, null=True)
+
+    # --- Release Date Fields ---
+    fpp_by = models.CharField(max_length=255, blank=True, null=True)
     fpp_date = models.DateField(blank=True, null=True) 
     irr_out_date = models.DateField(blank=True, null=True)
+    irr_run_number = models.CharField(max_length=255, blank=True, null=True)
+    irr_return_date = models.DateField(blank=True, null=True)
     
     data_source = models.CharField(
         max_length=20, 

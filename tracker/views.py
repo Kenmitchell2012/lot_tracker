@@ -311,6 +311,13 @@ def donor_list(request):
         donor.released_count = donor.lots.filter(irr_out_date__isnull=False).count()
         donor.latest_lot_date = donor.lots.aggregate(latest=Max('packaged_date'))['latest']
 
+    # Define the specific board ID for the main lot tracker
+    main_lot_tracker_board_id = "8120988708" 
+    
+    # Find the most recent sync log specifically for that board
+    last_sync = SyncLog.objects.filter(
+        board_id=main_lot_tracker_board_id
+    ).order_by('-timestamp').first()
     # # Return just the donor cards for HTMX requests
     # if request.headers.get('HX-Request'):
     #     return render(request, 'tracker/_donor_card_partial.html', {
@@ -318,16 +325,13 @@ def donor_list(request):
     #     })
 
     # Normal full-page render
-    try:
-        last_sync = SyncLog.objects.latest('timestamp')
-    except SyncLog.DoesNotExist:
-        last_sync = None
 
     return render(request, 'tracker/donor_list.html', {
         'donors': donors_page,
         'query': query,
         'last_sync': last_sync,
         'total_grafts': total_grafts,
+        'current_board': None,
     })
 
 
@@ -473,8 +477,11 @@ def sub_lot_detail(request, sub_lot_id):
     return render(request, 'tracker/sub_lot_detail.html', context)
 
 
+@login_required
 def sync_with_monday(request):
     if request.method == 'POST':
+        next_url = request.POST.get('next', 'tracker:donor_list')
+        
         # --- CONFIGURATION (from MAIN Lot Tracker Board) ---
         API_URL = "https://api.monday.com/v2"
         API_TOKEN = settings.MONDAY_API_TOKEN
@@ -482,21 +489,33 @@ def sync_with_monday(request):
         board_id = "8120988708"
         
         # --- Column IDs ---
+        status_col = "status"
         product_family_col = "label_mkkmvaff"
+        sterilization_col = "status_1_mkkmba88"
+        graft_id_col = "long_text_mkkmfhy6"
         packaged_by_col = "dropdown_mkkm4k43"
         packaged_date_col = "date_1_mkkmph2x"
+        product_code_col = "dropdown_mkkmnkta"
         quantity_col = "numbers_mkkm2g2a"
+        fpp_by_col = "people_mkkne9ht"
         fpp_date_col = "date4"
+        qc_out_number_col = "numbers_mkkndb04"
+        qc_out_reason_col = "status_1_mkkn165p"
         irr_out_col = "date_mkkmrc5j"
-        # --- END CONFIGURATION ---
-
+        irr_run_number_col = "text_mkm0f36c"
+        irr_return_date_col = "date_1_mkkmyysb"
+        da_val_col = "checkbox_mkkm85ka"
+        
+        # --- GRAPHQL QUERY ---
         query = f'''
             query ($limit: Int, $cursor: String) {{
                 boards(ids: {board_id}) {{
                     items_page(limit: $limit, cursor: $cursor) {{
                         cursor, items {{ name, column_values(ids: [
-                            "{product_family_col}", "{packaged_by_col}", "{packaged_date_col}",
-                            "{quantity_col}", "{fpp_date_col}", "{irr_out_col}"
+                            "{status_col}", "{product_family_col}", "{sterilization_col}", "{graft_id_col}",
+                            "{packaged_by_col}", "{packaged_date_col}", "{product_code_col}", "{quantity_col}",
+                            "{fpp_by_col}", "{fpp_date_col}", "{qc_out_number_col}", "{qc_out_reason_col}",
+                            "{irr_out_col}", "{irr_run_number_col}", "{irr_return_date_col}", "{da_val_col}"
                         ]) {{ id, text }} }}
                     }}
                 }}
@@ -515,16 +534,15 @@ def sync_with_monday(request):
                 response.raise_for_status()
                 results = response.json()
 
+                if 'errors' in results and results['errors']:
+                    raise Exception(f"Monday.com API Error: {results['errors'][0]['message']}")
+
                 items_page = results.get('data', {}).get('boards', [{}])[0].get('items_page', {})
                 items = items_page.get('items', [])
-                
                 if not items:
                     break
 
                 for item in items:
-                    # Debugging output to see the raw item data
-                    print("Raw Monday Item:", item)
-
                     full_lot_id = item.get('name')
                     if not full_lot_id:
                         continue
@@ -532,62 +550,40 @@ def sync_with_monday(request):
                     donor_id_str = full_lot_id.split('-')[0].strip()
                     donor_object, _ = Donor.objects.get_or_create(donor_id=donor_id_str)
 
-                    # --- Robust Product Type Parsing ---
                     product_type_str = None
                     for col in item['column_values']:
                         if col['id'] == product_family_col:
                             product_type_str = col.get('text')
+                            break
 
-                    if not product_type_str and len(full_lot_id.split('-')) > 1:
-                        product_type_str = full_lot_id.split('-')[1].strip()
-                    # --- End Parsing ---
-
-                    # Use update_or_create to handle both new and existing lots
                     lot_object, created = Lot.objects.update_or_create(
                         lot_id=full_lot_id,
                         defaults={
                             'donor': donor_object,
                             'product_type': product_type_str if product_type_str else "",
-                            'data_source': 'PRIMARY_SYNC'  # Mark as a full record
+                            'data_source': 'PRIMARY_SYNC'
                         }
                     )
-
-                    # Update other fields like quantity, dates, etc.
+                    
+                    # Update all other fields from the API response
                     for col in item['column_values']:
                         col_text = col.get('text')
-                        if col['id'] == packaged_by_col:
-                            lot_object.packaged_by = col_text
-                        elif col['id'] == packaged_date_col:
-                            if col_text:
-                                try:
-                                    lot_object.packaged_date = datetime.strptime(col_text, '%Y-%m-%d').date()
-                                except ValueError:
-                                    lot_object.packaged_date = None
-                            else:
-                                lot_object.packaged_date = None
-                        elif col['id'] == quantity_col:
-                            lot_object.quantity = int(col_text) if col_text and col_text.isdigit() else None
-                        elif col['id'] == irr_out_col:
-                            if col_text:
-                                try:
-                                    lot_object.irr_out_date = datetime.strptime(col_text, '%Y-%m-%d').date()
-                                except ValueError:
-                                    lot_object.irr_out_date = None
-                            else:
-                                lot_object.irr_out_date = None
-                        elif col['id'] == fpp_date_col:
-                            if col_text:
-                                try:
-                                    lot_object.fpp_date = datetime.strptime(col_text, '%Y-%m-%d').date()
-                                except ValueError:
-                                    lot_object.fpp_date = None
-                            else:
-                                lot_object.fpp_date = None
-
+                        if col['id'] == status_col: lot_object.status = col_text
+                        elif col['id'] == product_code_col: lot_object.product_code = col_text
+                        elif col['id'] == packaged_by_col: lot_object.packaged_by = col_text
+                        elif col['id'] == quantity_col: lot_object.quantity = int(col_text) if col_text and col_text.isdigit() else None
+                        elif col['id'] == packaged_date_col: lot_object.packaged_date = datetime.strptime(col_text, '%Y-%m-%d').date() if col_text else None
+                        elif col['id'] == sterilization_col: lot_object.sterilization = col_text
+                        elif col['id'] == graft_id_col: lot_object.graft_id_number = col_text
+                        elif col['id'] == fpp_by_col: lot_object.fpp_by = col_text
+                        elif col['id'] == fpp_date_col: lot_object.fpp_date = datetime.strptime(col_text, '%Y-%m-%d').date() if col_text else None
+                        elif col['id'] == qc_out_number_col: lot_object.qc_out_number = int(col_text) if col_text and col_text.isdigit() else None
+                        elif col['id'] == qc_out_reason_col: lot_object.qc_out_reason = col_text
+                        elif col['id'] == irr_out_col: lot_object.irr_out_date = datetime.strptime(col_text, '%Y-%m-%d').date() if col_text else None
+                        elif col['id'] == irr_run_number_col: lot_object.irr_run_number = col_text
+                        elif col['id'] == irr_return_date_col: lot_object.irr_return_date = datetime.strptime(col_text, '%Y-%m-%d').date() if col_text else None
+                        elif col['id'] == da_val_col: lot_object.da_val = bool(col_text)
                     
-                    # Debugging output to see the final lot object before saving
-                    print(f"Saving Lot {full_lot_id}: qty={lot_object.quantity}, fpp_date={lot_object.fpp_date}")
-
                     lot_object.save()
                     items_synced += 1
 
@@ -595,14 +591,17 @@ def sync_with_monday(request):
                 if not cursor:
                     break
             
-            ActivityLog.objects.create(user=request.user, action_type="Primary Data Synced", details=f"Synced {items_synced} lots.")
-            SyncLog.objects.update_or_create(id=1)
+            details_str = f"Synced {items_synced} primary lots from the main tracker."
+            SyncLog.objects.create(board_id=board_id, status='Success', details=details_str)
+            ActivityLog.objects.create(user=request.user, action_type="Primary Data Synced", details=details_str)
             messages.success(request, f"Successfully synced {items_synced} items from Monday.com.")
 
         except Exception as e:
-            logging.error("ERROR IN SYNC VIEW:", exc_info=True)
+            logger.error("ERROR IN SYNC VIEW:", exc_info=True)
             messages.error(request, f"An error occurred during sync: {e}")
 
+        return redirect(next_url)
+    
     return redirect('tracker:donor_list')
 
 @user_passes_test(lambda u: u.is_staff)

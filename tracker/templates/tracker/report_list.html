@@ -8,10 +8,6 @@
     <div class="flex justify-between items-center mb-10">
         <h1 class="text-4xl font-extrabold text-white tracking-tight">📊 Reports Dashboard</h1>
         <a href="{% url 'tracker:admin_dashboard' %}" class="text-sm text-cyan-400 hover:underline">&larr; Back to Admin Dashboard</a>
-        {% comment %} <a href="{% url 'tracker:export_reports_pdf' %}" class="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg">
-            🧾 Download All Reports (PDF)
-        </a> {% endcomment %}
-
     </div>
 
     <!-- Summary Charts -->
@@ -75,7 +71,7 @@
 
     <!-- Reports Table -->
     <div class="w-full bg-gradient-to-br from-gray-800 to-gray-900 p-10 rounded-2xl shadow-md border border-gray-700 mb-20">
-        <h2 class="text-xl font-bold text-white mb-6">📈 Detailed 12-Month Trend Reports</h2>
+        <h2 class="text-xl font-bold text-white mb-6">📈 Detailed 13-Month Trend Reports</h2>
         <form method="post" action="{% url 'tracker:report_list' %}" class="mb-6">
             {% csrf_token %}
             <button type="submit" class="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-lg">Generate / Refresh Report</button>
@@ -84,7 +80,7 @@
             {% for report in reports %}
                 <li class="py-6 flex justify-between items-center">
                     <div>
-                        <p class="font-medium text-white">12-Month Trend Report</p>
+                        <p class="font-medium text-white">13-Month Trend Report</p>
                         <p class="text-xs text-gray-400">Last Generated: {{ report.generated_at|date:"Y-m-d" }}</p>
                     </div>
                     <div class="flex space-x-3">
@@ -115,20 +111,15 @@ document.addEventListener('DOMContentLoaded', function () {
     const currentMonth = new Date().getMonth() + 1;
 
     const allMonths = [
-        { num: '01', name: 'January' },
-        { num: '02', name: 'February' },
-        { num: '03', name: 'March' },
-        { num: '04', name: 'April' },
-        { num: '05', name: 'May' },
-        { num: '06', name: 'June' },
-        { num: '07', name: 'July' },
-        { num: '08', name: 'August' },
-        { num: '09', name: 'September' },
-        { num: '10', name: 'October' },
-        { num: '11', name: 'November' },
-        { num: '12', name: 'December' },
+        { num: '01', name: 'January' }, { num: '02', name: 'February' },
+        { num: '03', name: 'March' }, { num: '04', name: 'April' },
+        { num: '05', name: 'May' }, { num: '06', name: 'June' },
+        { num: '07', name: 'July' }, { num: '08', name: 'August' },
+        { num: '09', name: 'September' }, { num: '10', name: 'October' },
+        { num: '11', name: 'November' }, { num: '12', name: 'December' },
     ];
 
+    // --- THIS IS THE CORRECTED SECTION ---
     chartCards.forEach(card => {
         const ctx = document.getElementById(card.canvas_id);
         if (ctx) {
@@ -146,29 +137,35 @@ document.addEventListener('DOMContentLoaded', function () {
                         backgroundColor: card.color,
                         borderRadius: 5,
                         barThickness: 28,
-                        datalabels: {
-                            anchor: 'end',
-                            align: 'end',
-                            color: '#fff',
-                            font: { weight: 'bold' }
-                        }
                     }]
                 },
                 options: {
                     indexAxis: 'y',
                     responsive: true,
                     maintainAspectRatio: false,
+                    scales: {
+                        x: { 
+                            beginAtZero: true, 
+                            ticks: { color: '#9ca3af' }, 
+                            grid: { color: '#4b5563' } 
+                        },
+                        y: { 
+                            ticks: { color: '#9ca3af' }, 
+                            grid: { display: false } 
+                        }
+                    },
                     plugins: {
                         legend: { display: false },
-                        datalabels: { formatter: Math.round }
-                    },
-                    scales: {
-                        x: { beginAtZero: true, ticks: { color: '#9ca3af' }, grid: { color: '#4b5563' } },
-                        y: { ticks: { color: '#9ca3af' }, grid: { display: false } }
-
-                    },
-                    plugins: { legend: { display: false}}
-            }
+                        datalabels: {
+                            anchor: 'end',
+                            align: 'end',
+                            color: '#e5e7eb',
+                            font: { weight: 'bold' },
+                            formatter: (value) => value.toLocaleString(),
+                        }
+                    }
+                },
+                plugins: [ChartDataLabels] // Register the plugin
             });
         }
     });
@@ -190,24 +187,12 @@ document.addEventListener('DOMContentLoaded', function () {
                         data: fppTotals,
                         backgroundColor: 'rgba(139,92,246,0.6)',
                         borderRadius: 5,
-                        datalabels: {
-                            anchor: 'end',
-                            align: 'end',
-                            color: '#fff',
-                            font: { weight: 'bold' }
-                        }
                     },
                     {
                         label: 'Labeled Grafts',
                         data: labeledTotals,
                         backgroundColor: 'rgba(59,130,246,0.6)',
                         borderRadius: 5,
-                        datalabels: {
-                            anchor: 'end',
-                            align: 'end',
-                            color: '#fff',
-                            font: { weight: 'bold' }
-                        }
                     }
                 ]
             },
@@ -216,7 +201,13 @@ document.addEventListener('DOMContentLoaded', function () {
                 maintainAspectRatio: false,
                 plugins: {
                     legend: { labels: { color: '#d1d5db' } },
-                    datalabels: { formatter: Math.round }
+                    datalabels: {
+                        anchor: 'end',
+                        align: 'end',
+                        color: '#fff',
+                        font: { weight: 'bold' },
+                        formatter: (value) => value.toLocaleString()
+                    }
                 },
                 scales: {
                     x: {
@@ -249,12 +240,6 @@ document.addEventListener('DOMContentLoaded', function () {
                     data: irradiatedTotals,
                     backgroundColor: 'rgba(239, 68, 68, 0.7)',
                     borderRadius: 5,
-                    datalabels: {
-                        anchor: 'end',
-                        align: 'end',
-                        color: '#fff',
-                        font: { weight: 'bold' }
-                    }
                 }]
             },
             options: {
@@ -262,7 +247,13 @@ document.addEventListener('DOMContentLoaded', function () {
                 maintainAspectRatio: false,
                 plugins: {
                     legend: { labels: { color: '#d1d5db' } },
-                    datalabels: { formatter: Math.round }
+                    datalabels: {
+                        anchor: 'end',
+                        align: 'end',
+                        color: '#fff',
+                        font: { weight: 'bold' },
+                        formatter: (value) => value.toLocaleString()
+                    }
                 },
                 scales: {
                     x: {
@@ -296,24 +287,12 @@ document.addEventListener('DOMContentLoaded', function () {
                         data: [grafts],
                         backgroundColor: 'rgba(234, 179, 8, 0.6)',
                         yAxisID: 'y1',
-                        datalabels: {
-                            anchor: 'end',
-                            align: 'end',
-                            color: '#fff',
-                            font: { weight: 'bold' }
-                        }
                     },
                     {
                         label: 'Total Lots',
                         data: [lots],
                         backgroundColor: 'rgba(168, 85, 247, 0.6)',
                         yAxisID: 'y2',
-                        datalabels: {
-                            anchor: 'end',
-                            align: 'end',
-                            color: '#fff',
-                            font: { weight: 'bold' }
-                        }
                     }
                 ]
             },
@@ -322,7 +301,13 @@ document.addEventListener('DOMContentLoaded', function () {
                 maintainAspectRatio: false,
                 plugins: {
                     legend: { labels: { color: '#d1d5db' } },
-                    datalabels: { formatter: Math.round }
+                    datalabels: {
+                        anchor: 'end',
+                        align: 'end',
+                        color: '#fff',
+                        font: { weight: 'bold' },
+                        formatter: (value) => value.toLocaleString()
+                    }
                 },
                 scales: {
                     y1: {

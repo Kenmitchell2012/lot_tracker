@@ -52,7 +52,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const labeledTrend = reportData.labeled_trend || [];
     const fppTrend = reportData.fpp_trend || [];
 
-    // The createTrendChart function has been updated
     const createTrendChart = (canvasId, chartLabel, data, color, borderColor) => {
         const ctx = document.getElementById(canvasId);
         if (!ctx || !data || data.length === 0) {
@@ -66,21 +65,24 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         const values = data.map(item => item.total);
 
+        // --- FIX PART 1: Calculate a new maximum for the Y-axis ---
+        // This adds about 15% of padding to the top of the chart
+        const suggestedMax = Math.max(...values) * 1.15;
+
         new Chart(ctx, {
-            // 1. Changed chart type to 'line' for better trend visualization
             type: 'line',
             data: {
                 labels: labels,
                 datasets: [{
                     label: chartLabel,
                     data: values,
-                    backgroundColor: color,       // Fill color under the line
-                    borderColor: borderColor,   // Line color
+                    backgroundColor: color,
+                    borderColor: borderColor,
                     borderWidth: 3,
                     pointBackgroundColor: borderColor,
                     pointRadius: 4,
                     pointHoverRadius: 6,
-                    tension: 0.3,               // Makes the line smooth
+                    tension: 0.3,
                     fill: true,
                 }]
             },
@@ -91,7 +93,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     y: { 
                         beginAtZero: true, 
                         ticks: { color: '#9ca3af' }, 
-                        grid: { color: '#4b5563' } 
+                        grid: { color: '#4b5563' },
+                        // --- FIX PART 2: Apply the new maximum to the Y-axis ---
+                        suggestedMax: suggestedMax
                     },
                     x: { 
                         ticks: { color: '#9ca3af' }, 
@@ -100,18 +104,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 },
                 plugins: { 
                     legend: { display: false },
-                    // 2. Added configuration for the datalabels plugin
                     datalabels: {
                         anchor: 'end',
                         align: 'end',
-                        color: '#e5e7eb', // Light text color for labels
+                        color: '#e5e7eb',
                         font: {
                             weight: 'bold',
                             size: 12,
                         },
-                        // Format the number with commas (e.g., 10000 -> 10,000)
                         formatter: (value) => value.toLocaleString(),
-                        // Add a subtle shadow for readability
                         textStrokeColor: 'black',
                         textStrokeWidth: 2,
                     },
@@ -131,12 +132,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                 }
             },
-            // 3. Registered the datalabels plugin for this chart instance
             plugins: [ChartDataLabels],
         });
     };
 
-    // Call the function with updated colors for line charts
     createTrendChart('packagedTrendChart', 'Total Packaged', packagedTrend, 'rgba(20, 184, 166, 0.2)', 'rgba(20, 184, 166, 1)');
     createTrendChart('labeledTrendChart', 'Total Labeled', labeledTrend, 'rgba(59, 130, 246, 0.2)', 'rgba(59, 130, 246, 1)');
     createTrendChart('fppTrendChart', 'Total FPP Inspected', fppTrend, 'rgba(139, 92, 246, 0.2)', 'rgba(139, 92, 246, 1)');

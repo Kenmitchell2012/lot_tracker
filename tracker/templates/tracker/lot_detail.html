@@ -1,42 +1,138 @@
 {% extends 'base.html' %}
+{% load humanize %}
+{% load status_tags %}
 
 {% block title %}Lot Details: {{ lot.lot_id }}{% endblock %}
 
 {% block content %}
-<div class="max-w-4xl mx-auto p-6">
-    <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
-        <h1 class="text-3xl font-bold text-gray-100">{{ lot.lot_id }}</h1>
-        <p class="text-lg text-teal-400">
-            Part of Donor: 
-            <a href="{% url 'tracker:donor_detail' lot.donor.id %}" class="hover:underline">{{ lot.donor.donor_id }}</a>
-        </p>
+<div class="max-w-7xl mx-auto p-6">
+    <div class="bg-gray-900 p-8 rounded-2xl shadow-xl border border-gray-700">
+        <!-- Header -->
+        <div class="flex flex-col md:flex-row md:items-center md:justify-between border-b border-gray-700 pb-5 mb-6">
+            <div>
+                <h1 class="text-4xl font-extrabold text-white tracking-tight">{{ lot.lot_id }}</h1>
+                <p class="text-lg text-teal-400 mt-1 flex items-center gap-2">
+                    Part of Donor:
+                    <a href="{% url 'tracker:donor_detail' lot.donor.id %}" 
+                       class="hover:underline hover:text-teal-300 transition">
+                        {{ lot.donor.donor_id }}
+                    </a>
+                    <!-- Copy Button -->
+                    <button onclick="copyToClipboard('{{ lot.donor.donor_id }}')" 
+                            class="text-gray-400 hover:text-teal-400 transition" 
+                            title="Copy Donor ID">
+                        📋
+                    </button>
+                </p>
+            </div>
+            <div class="mt-4 md:mt-0">
+                <span class="px-4 py-2 rounded-full text-sm font-semibold {{ lot.status|status_badge_color }}">
+                    {{ lot.status|default:"N/A" }}
+                </span>
+            </div>
+        </div>
 
-        <div class="mt-6 pt-4 border-t border-gray-600 grid grid-cols-2 md:grid-cols-3 gap-6 text-sm">
-            <div>
-                <p class="text-gray-400">Product Type:</p>
-                <p class="font-semibold text-gray-100">{{ lot.product_type|default:"N/A" }}</p>
+        <!-- Main Info Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8 text-sm">
+            <!-- Column 1 -->
+            <div class="space-y-5">
+                <div>
+                    <p class="text-gray-400 uppercase text-xs tracking-wider">Product Code</p>
+                    <p class="text-lg font-semibold text-gray-100">{{ lot.product_code|default:"N/A" }}</p>
+                </div>
+                <div>
+                    <p class="text-gray-400 uppercase text-xs tracking-wider">Product Family</p>
+                    <p class="text-lg font-semibold text-gray-100">{{ lot.product_type|default:"N/A" }}</p>
+                </div>
+                <div>
+                    <p class="text-gray-400 uppercase text-xs tracking-wider">Initial Quantity</p>
+                    <p class="text-lg font-semibold text-gray-100">{{ lot.quantity|intcomma|default:"N/A" }}</p>
+                </div>
             </div>
-            <div>
-                <p class="text-gray-400">Packaged By:</p>
-                <p class="font-semibold text-gray-100">{{ lot.packaged_by|default:"N/A" }}</p>
+
+            <!-- Column 2 -->
+            <div class="space-y-5">
+                <div>
+                    <p class="text-gray-400 uppercase text-xs tracking-wider">Sterilization</p>
+                    <span class="mt-1 inline-block px-3 py-1 text-xs font-semibold rounded-full {{ lot.sterilization|status_badge_color }}">
+                        {{ lot.sterilization|default:"N/A" }}
+                    </span>
+                </div>
+                <div>
+                    <p class="text-gray-400 uppercase text-xs tracking-wider">QC Out # / Reason</p>
+                    <p class="text-lg font-semibold text-gray-100">
+                        {{ lot.qc_out_number|default:"N/A" }} 
+                        {% if lot.qc_out_reason %}
+                            <span class="ml-2 px-2 py-0.5 text-xs rounded-full {{ lot.qc_out_reason|status_badge_color }}">
+                                {{ lot.qc_out_reason }}
+                            </span>
+                        {% endif %}
+                    </p>
+                </div>
+                <div>
+                    <p class="text-gray-400 uppercase text-xs tracking-wider">DA / VAL</p>
+                    <span class="mt-1 inline-block px-3 py-1 text-xs font-bold rounded-full {% if lot.da_val %}bg-green-800 text-green-200{% else %}bg-gray-700 text-gray-300{% endif %}">
+                        {% if lot.da_val %}Yes{% else %}No{% endif %}
+                    </span>
+                </div>
             </div>
-            <div>
-                <p class="text-gray-400">Packaged Date:</p>
-                <p class="font-semibold text-gray-100">{{ lot.packaged_date|date:"Y-m-d"|default:"N/A" }}</p>
+
+            <!-- Column 3 -->
+            <div class="space-y-5">
+                <div>
+                    <p class="text-gray-400 uppercase text-xs tracking-wider">Packaged Date / By</p>
+                    <p class="text-lg font-semibold text-gray-100">
+                        {{ lot.packaged_date|date:"M d, Y"|default:"N/A" }} by {{ lot.packaged_by|default:"N/A" }}
+                    </p>
+                </div>
+                <div>
+                    <p class="text-gray-400 uppercase text-xs tracking-wider">FPP Date / By</p>
+                    <p class="text-lg font-semibold text-gray-100">
+                        {{ lot.fpp_date|date:"M d, Y"|default:"N/A" }} by {{ lot.fpp_by|default:"N/A" }}
+                    </p>
+                </div>
+                <div>
+                    <p class="text-gray-400 uppercase text-xs tracking-wider">IRR Out / Run #</p>
+                    <p class="text-lg font-semibold text-gray-100">
+                        {{ lot.irr_out_date|date:"M d, Y"|default:"N/A" }} (Run: {{ lot.irr_run_number|default:"N/A" }})
+                    </p>
+                </div>
+                <div>
+                    <p class="text-gray-400 uppercase text-xs tracking-wider">IRR Return Date</p>
+                    <p class="text-lg font-semibold text-gray-100">
+                        {{ lot.irr_return_date|date:"M d, Y"|default:"N/A" }}
+                    </p>
+                </div>
             </div>
-            <div>
-                <p class="text-gray-400">Initial Quantity:</p>
-                <p class="font-semibold text-gray-100">{{ lot.quantity|default:"N/A" }}</p>
-            </div>
-            <div>
-                <p class="text-gray-400">FPP Date:</p>
-                <p class="font-semibold text-gray-100">{{ lot.fpp_date|date:"Y-m-d"|default:"N/A" }}</p>
-            </div>
-            <div>
-                <p class="text-gray-400">IRR Out Date:</p>
-                <p class="font-semibold text-gray-100">{{ lot.irr_out_date|date:"Y-m-d"|default:"N/A" }}</p>
+        </div>
+
+        <!-- Graft ID Section -->
+        <div class="mt-8 pt-6 border-t border-gray-700">
+            <p class="text-gray-400 uppercase text-xs tracking-wider">Graft ID #</p>
+            <div class="mt-2 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-800 border border-gray-700">
+                <span class="font-mono text-sm text-gray-200 break-all">{{ lot.graft_id_number|default:"N/A" }}</span>
+                <button onclick="copyToClipboard('{{ lot.graft_id_number }}')" 
+                        class="text-gray-400 hover:text-teal-400 transition" 
+                        title="Copy Graft ID">
+                    📋
+                </button>
             </div>
         </div>
     </div>
 </div>
+
+<!-- Copy to Clipboard Script -->
+<script>
+function copyToClipboard(text) {
+    if (!text || text === "N/A") {
+        alert("Nothing to copy");
+        return;
+    }
+    navigator.clipboard.writeText(text).then(() => {
+        alert("Copied: " + text);
+    }).catch(err => {
+        console.error("Failed to copy: ", err);
+    });
+}
+</script>
 {% endblock %}
