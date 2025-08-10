@@ -489,22 +489,10 @@ def sync_with_monday(request):
         board_id = "8120988708"
         
         # --- Column IDs ---
-        status_col = "status"
-        product_family_col = "label_mkkmvaff"
-        sterilization_col = "status_1_mkkmba88"
-        graft_id_col = "long_text_mkkmfhy6"
-        packaged_by_col = "dropdown_mkkm4k43"
-        packaged_date_col = "date_1_mkkmph2x"
-        product_code_col = "dropdown_mkkmnkta"
-        quantity_col = "numbers_mkkm2g2a"
-        fpp_by_col = "people_mkkne9ht"
-        fpp_date_col = "date4"
-        qc_out_number_col = "numbers_mkkndb04"
-        qc_out_reason_col = "status_1_mkkn165p"
-        irr_out_col = "date_mkkmrc5j"
-        irr_run_number_col = "text_mkm0f36c"
-        irr_return_date_col = "date_1_mkkmyysb"
-        da_val_col = "checkbox_mkkm85ka"
+        status_col, product_family_col, sterilization_col, graft_id_col = "status", "label_mkkmvaff", "status_1_mkkmba88", "long_text_mkkmfhy6"
+        packaged_by_col, packaged_date_col, product_code_col, quantity_col = "dropdown_mkkm4k43", "date_1_mkkmph2x", "dropdown_mkkmnkta", "numbers_mkkm2g2a"
+        fpp_by_col, fpp_date_col, qc_out_number_col, qc_out_reason_col = "people_mkkne9ht", "date4", "numbers_mkkndb04", "status_1_mkkn165p"
+        irr_out_col, irr_run_number_col, irr_return_date_col, da_val_col = "date_mkkmrc5j", "text_mkm0f36c", "date_1_mkkmyysb", "checkbox_mkkm85ka"
         
         # --- GRAPHQL QUERY ---
         query = f'''
@@ -544,6 +532,18 @@ def sync_with_monday(request):
 
                 for item in items:
                     full_lot_id = item.get('name')
+
+                    # --- DEBUG BLOCK FOR THE SPECIFIC LOT ---
+                    if full_lot_id == 'CRT240252-SB':
+                        print(f"\n--- DEBUGGING LOT: {full_lot_id} ---")
+                        print("Raw column values from API:")
+                        # We will specifically look for the IRR Return Date column
+                        for col in item['column_values']:
+                            if col['id'] == 'date_1_mkkmyysb':
+                                print(f"  - Found IRR Return Date column. Raw text: '{col.get('text')}'")
+                        print("----------------------------------\n")
+                    # --- END DEBUG BLOCK ---
+
                     if not full_lot_id:
                         continue
 
@@ -558,14 +558,9 @@ def sync_with_monday(request):
 
                     lot_object, created = Lot.objects.update_or_create(
                         lot_id=full_lot_id,
-                        defaults={
-                            'donor': donor_object,
-                            'product_type': product_type_str if product_type_str else "",
-                            'data_source': 'PRIMARY_SYNC'
-                        }
+                        defaults={ 'donor': donor_object, 'product_type': product_type_str or "", 'data_source': 'PRIMARY_SYNC'}
                     )
                     
-                    # Update all other fields from the API response
                     for col in item['column_values']:
                         col_text = col.get('text')
                         if col['id'] == status_col: lot_object.status = col_text
@@ -597,7 +592,7 @@ def sync_with_monday(request):
             messages.success(request, f"Successfully synced {items_synced} items from Monday.com.")
 
         except Exception as e:
-            logger.error("ERROR IN SYNC VIEW:", exc_info=True)
+            logging.error("ERROR IN SYNC VIEW:", exc_info=True)
             messages.error(request, f"An error occurred during sync: {e}")
 
         return redirect(next_url)
@@ -609,20 +604,29 @@ def sync_with_monday(request):
 def sync_board(request, board_id):
     board_to_sync = get_object_or_404(MonthlyBoard, board_id=board_id)
     
-    # --- SECTION 1: CONFIGURATION ---
+    # --- API and Board Configuration ---
     API_URL = "https://api.monday.com/v2"
     API_TOKEN = settings.MONDAY_API_TOKEN
     headers = {"Authorization": API_TOKEN, "API-Version": "2023-10"}
     labeling_board_id = board_to_sync.board_id
     
+    # --- Column ID Mapping ---
+    product_descriptions_col = "multi_select6"
+    create_date_col = "date__1"
+    initial_qty_col = "qty2"
+    release_date_col = "po_due_date"
     product_type_col = "dropdown__1"
-    labeled_by_col = "text5"
-    labeled_date_col = "date43"
-    due_date_col = "po_due_date"
-    final_qty_col = "numbers"
     chart_status_col = "status"
+    labeling_progress_col = "progress"
+    labeling_status_col = "status_2"
+    final_qty_col = "numbers"
+    tech_col = "text5"
+    labeled_date_col = "date43"
+    qc_status_col = "status_3"
+    days_to_label_col = "formula__1"
+    days_to_release_col = "formula6__1"
 
-    # --- SECTION 2: GRAPHQL QUERY ---
+    # --- GraphQL Query to Fetch All Columns ---
     query = f'''
         query ($limit: Int, $cursor: String) {{
             boards(ids: {labeling_board_id}) {{
@@ -631,18 +635,21 @@ def sync_board(request, board_id):
                     items {{
                         id, name
                         column_values(ids: [
-                            "{product_type_col}", "{labeled_by_col}", "{labeled_date_col}",
-                            "{due_date_col}", "{final_qty_col}", "{chart_status_col}"
-                        ]) {{
-                            id, text
+                            "{product_descriptions_col}", "{create_date_col}", "{initial_qty_col}",
+                            "{release_date_col}", "{product_type_col}", "{chart_status_col}",
+                            "{labeling_progress_col}", "{labeling_status_col}", "{final_qty_col}",
+                            "{tech_col}", "{labeled_date_col}", "{qc_status_col}",
+                            "{days_to_label_col}", "{days_to_release_col}"
+                        ]) {{ 
+                            id, text, value
                         }}
                     }}
                 }}
             }}
         }}
     '''
-
-    # --- SECTION 3: SYNC LOGIC ---
+    
+    # --- Sync Process Initialization ---
     limit, cursor = 100, None
     created_count, updated_count, skipped_count = 0, 0, 0
     total_lots_processed = 0
@@ -666,24 +673,60 @@ def sync_board(request, board_id):
 
             for item in items:
                 full_sublot_id = item.get('name')
+
+                 # --- FINAL DEBUG BLOCK ---
+                # When the script finds your specific lot, it will print the raw data
+                # for the progress and formula columns.
+                if full_sublot_id == 'CRT220932-AM-MK2':
+                    print(f"\n--- DEBUGGING LOT: {full_sublot_id} ---")
+                    for col in item['column_values']:
+                        if col['id'] in ['progress', 'formula__1', 'formula6__1']:
+                            print(f"  - Found Column ID: {col['id']}")
+                            print(f"    - Raw Text from API: '{col.get('text')}'")
+                            print(f"    - Raw Value from API: '{col.get('value')}'")
+                    print("----------------------------------\n")
+                # --- END OF DEBUG BLOCK ---
                 
+                # Initialize variables for all columns
+                product_descriptions, create_date_str, initial_qty = None, None, None
+                labeling_progress, labeling_status, qc_status = None, None, None
+                days_to_label, days_to_release = None, None
                 sublot_product_type, labeled_by, labeled_date_str, due_date_str, final_qty, status = None, None, None, None, None, None
+
+                # Extract value from each column
                 for col in item['column_values']:
                     col_text = col.get('text')
                     if col['id'] == product_type_col: sublot_product_type = col_text
-                    elif col['id'] == labeled_by_col: labeled_by = col_text
+                    elif col['id'] == tech_col: labeled_by = col_text
                     elif col['id'] == labeled_date_col: labeled_date_str = col_text
-                    elif col['id'] == due_date_col: due_date_str = col_text
+                    elif col['id'] == release_date_col: due_date_str = col_text
                     elif col['id'] == final_qty_col: final_qty = int(col_text) if col_text and col_text.isdigit() else None
                     elif col['id'] == chart_status_col: status = col_text
+                    elif col['id'] == product_descriptions_col: product_descriptions = col_text
+                    elif col['id'] == create_date_col: create_date_str = col_text
+                    elif col['id'] == initial_qty_col: initial_qty = int(col_text) if col_text and col_text.isdigit() else None
+                    elif col['id'] == labeling_status_col: labeling_status = col_text
+                    elif col['id'] == qc_status_col: qc_status = col_text
+                    elif col['id'] == days_to_label_col: days_to_label = col_text
+                    elif col['id'] == days_to_release_col: days_to_release = col_text
+                    elif col['id'] == labeling_progress_col:
+                        progress_value_str = col.get('value')
+                        if progress_value_str:
+                            try:
+                                progress_data = json.loads(progress_value_str)
+                                labeling_progress = progress_data.get('percent', 0)
+                            except (json.JSONDecodeError, TypeError):
+                                labeling_progress = 0
+                        else:
+                            labeling_progress = 0
                 
                 if not full_sublot_id:
                     skipped_count += 1
                     continue
 
+                # Find or create the parent Donor and initial Lot
                 donor_id_str = full_sublot_id.split('-')[0]
                 donor_obj, created_donor = Donor.objects.get_or_create(donor_id=donor_id_str)
-                
                 parent_lot_obj = Lot.objects.filter(donor=donor_obj).order_by('packaged_date').first()
                 
                 if not parent_lot_obj:
@@ -697,6 +740,7 @@ def sync_board(request, board_id):
                         }
                     )
 
+                # Fetch comments for lots requiring attention
                 latest_comment_body = None
                 if status == 'REQ ATTN':
                     item_id = item.get('id')
@@ -707,9 +751,12 @@ def sync_board(request, board_id):
                     if updates:
                         latest_comment_body = updates[0].get('body')
 
+                # Parse date strings into date objects
                 due_date_obj = datetime.strptime(due_date_str.split(' - ')[0].strip(), '%Y-%m-%d').date() if due_date_str else None
                 labeled_date_obj = datetime.strptime(labeled_date_str.split(' - ')[0].strip(), '%Y-%m-%d').date() if labeled_date_str else None
+                create_date_obj = datetime.strptime(create_date_str.split(' - ')[0].strip(), '%Y-%m-%d').date() if create_date_str else None
 
+                # Create or update the SubLot instance with all data
                 sublot, created = SubLot.objects.update_or_create(
                     sub_lot_id=full_sublot_id,
                     defaults={
@@ -722,9 +769,18 @@ def sync_board(request, board_id):
                         'final_quantity': final_qty,
                         'status': status,
                         'latest_comment': latest_comment_body,
+                        'product_descriptions': product_descriptions,
+                        'create_date': create_date_obj,
+                        'initial_quantity': initial_qty,
+                        'labeling_progress': labeling_progress,
+                        'labeling_status': labeling_status,
+                        'qc_status': qc_status,
+                        'days_to_label': days_to_label,
+                        'days_to_release': days_to_release,
                     }
                 )
 
+                # Update running totals
                 total_lots_processed += 1
                 if sublot.final_quantity:
                     total_grafts_processed += sublot.final_quantity
@@ -736,6 +792,7 @@ def sync_board(request, board_id):
             if not cursor:
                 break
         
+        # --- Final Logging and User Feedback ---
         details_str = (f"Created: {created_count}, Updated: {updated_count}, Skipped: {skipped_count}. "
                        f"Processed: {total_lots_processed} lots totaling {total_grafts_processed:,} grafts.")
         board_to_sync.last_synced = timezone.now()

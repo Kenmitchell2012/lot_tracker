@@ -1,50 +1,129 @@
 {% extends 'base.html' %}
-{% load static %}
+{% load humanize %}
+{% load status_tags %}
 
 {% block title %}Sub-Lot: {{ sub_lot.sub_lot_id }}{% endblock %}
 
 {% block content %}
 <div class="max-w-5xl mx-auto p-6 space-y-8">
 
-    <!-- Sub-Lot Header -->
-    <div class="bg-gray-900 p-6 rounded-xl shadow-xl border border-teal-600/30">
-        <h1 class="text-4xl font-extrabold text-white tracking-tight">{{ sub_lot.sub_lot_id }}</h1>
-        <p class="mt-2 text-lg text-teal-400">
-            Child of Lot:
-            <a href="{% url 'tracker:lot_detail' sub_lot.parent_lot.id %}" class="underline hover:text-teal-300 transition">
-                {{ sub_lot.parent_lot.lot_id }}
-            </a>
-        </p>
-    </div>
+    <div>
+        <!-- Sub-Lot ID with copy -->
+        <h1 class="text-4xl font-extrabold text-white tracking-tight flex items-center gap-2">
+            <span id="subLotId">{{ sub_lot.sub_lot_id }}</span>
+            <button onclick="copyToClipboard('subLotId')" class="text-gray-400 hover:text-green-400" title="Copy Sub-Lot ID">📋</button>
+        </h1>
 
-    <!-- Labeling Details -->
-    <div class="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700">
-        <h2 class="text-2xl font-semibold text-white mb-6 flex items-center gap-2">
-            <svg class="w-6 h-6 text-teal-400" fill="none" stroke="currentColor" stroke-width="2"
-                 viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round"
-                 d="M9 17v-6a2 2 0 012-2h6" /></svg>
-            Labeling Details
-        </h2>
-        
-        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 text-sm">
-            <div>
-                <p class="text-gray-400">Labeled By</p>
-                <p class="font-semibold text-white">{{ sub_lot.labeled_by|default:"N/A" }}</p>
-            </div>
-            <div>
-                <p class="text-gray-400">Labeled Date</p>
-                <p class="font-semibold text-white">{{ sub_lot.labeled_date|date:"m-d-Y" }}</p>
-            </div>
-            <div>
-                <p class="text-gray-400">Final Quantity</p>
-                <p class="font-semibold text-white">{{ sub_lot.final_quantity|default:"N/A" }}</p>
-            </div>
-            <div>
-                <p class="text-gray-400">Chart Status</p>
-                <p class="font-semibold text-white">{{ sub_lot.status|default:"N/A" }}</p>
-            </div>
+        <div class="mt-2 text-lg text-gray-400 space-x-4">
+            <!-- Parent Lot with copy -->
+            <span>
+                Child of Lot: 
+                <a href="{% url 'tracker:lot_detail' sub_lot.parent_lot.id %}" class="text-teal-400 underline hover:text-teal-300" id="parentLotId">{{ sub_lot.parent_lot.lot_id }}</a>
+                <button onclick="copyToClipboard('parentLotId')" class="text-gray-400 hover:text-green-400" title="Copy Lot ID">📋</button>
+            </span>
+            <span>&bull;</span>
+            <!-- Donor with copy -->
+            <span>
+                From Donor: 
+                <a href="{% url 'tracker:donor_detail' sub_lot.parent_lot.donor.id %}" class="text-teal-400 underline hover:text-teal-300" id="donorId">{{ sub_lot.parent_lot.donor.donor_id }}</a>
+                <button onclick="copyToClipboard('donorId')" class="text-gray-400 hover:text-green-400" title="Copy Donor ID">📋</button>
+            </span>
         </div>
     </div>
 
+    <div class="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+            
+            <div class="space-y-4">
+                <h3 class="text-lg font-semibold text-white border-b border-gray-700 pb-2">Key Information</h3>
+                <div>
+                    <p class="text-sm text-gray-400">Product Type</p>
+                    <p class="font-medium text-gray-100">{{ sub_lot.product_type|default:"N/A" }}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-400">Initial / Final Quantity</p>
+                    <p class="font-medium text-gray-100">{{ sub_lot.initial_quantity|intcomma|default:"N/A" }} / <span class="font-bold">{{ sub_lot.final_quantity|intcomma|default:"N/A" }}</span></p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-400">Product Descriptions</p>
+                    <p class="font-medium text-gray-100">{{ sub_lot.product_descriptions|default:"N/A" }}</p>
+                </div>
+            </div>
+
+            <div class="space-y-4">
+                <h3 class="text-lg font-semibold text-white border-b border-gray-700 pb-2">Status & Progress</h3>
+                <div>
+                    <p class="text-sm text-gray-400">Chart Status</p>
+                    <span class="mt-1 inline-block px-3 py-1 text-xs font-semibold rounded-full {{ sub_lot.status|status_badge_color }}">{{ sub_lot.status|default:"N/A" }}</span>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-400">Labeling Status</p>
+                    <span class="mt-1 inline-block px-3 py-1 text-xs font-semibold rounded-full {{ sub_lot.labeling_status|status_badge_color }}">{{ sub_lot.labeling_status|default:"N/A" }}</span>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-400">QC Status</p>
+                    <span class="mt-1 inline-block px-3 py-1 text-xs font-semibold rounded-full {{ sub_lot.qc_status|status_badge_color }}">{{ sub_lot.qc_status|default:"N/A" }}</span>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-400">Labeling Progress</p>
+                    <div class="w-full bg-gray-700 rounded-full h-2.5 mt-1">
+                        {% if sub_lot.status == 'Done' or sub_lot.labeling_status == 'Done' %}
+                            <div class="bg-teal-500 h-2.5 rounded-full" style="width: 100%"></div>
+                        {% else %}
+                             <div class="bg-teal-500 h-2.5 rounded-full" style="width: {{ sub_lot.labeling_progress|default:50 }}%"></div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="space-y-4">
+                <h3 class="text-lg font-semibold text-white border-b border-gray-700 pb-2">Dates & Metrics</h3>
+                <div>
+                    <p class="text-sm text-gray-400">Create Date</p>
+                    <p class="font-medium text-gray-100">{{ sub_lot.create_date|date:"M d, Y"|default:"N/A" }}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-400">Labeled Date / By</p>
+                    <p class="font-medium text-gray-100">{{ sub_lot.labeled_date|date:"M d, Y"|default:"N/A" }} by {{ sub_lot.labeled_by|default:"N/A" }}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-400">Release Date (Due)</p>
+                    <p class="font-medium text-gray-100">{{ sub_lot.due_date|date:"M d, Y"|default:"N/A" }}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-400">Days to Label / Release</p>
+                    <p class="font-medium text-gray-100">{{ sub_lot.calculated_days_to_label|default:"-" }} / {{ sub_lot.calculated_days_to_release|default:"-" }}</p>
+                </div>
+            </div>
+            
+        </div>
+    </div>
 </div>
+
+<!-- Copy to Clipboard with Toast Notification -->
+<script>
+function showToast(message, type = "success") {
+    const toast = document.createElement("div");
+    toast.className = `fixed bottom-4 right-4 px-4 py-2 rounded shadow text-white z-50 ${
+        type === "success" ? "bg-green-500" : type === "error" ? "bg-red-500" : "bg-gray-700"
+    }`;
+    toast.textContent = message;
+
+    document.body.appendChild(toast);
+
+    setTimeout(() => {
+        toast.remove();
+    }, 2000);
+}
+
+function copyToClipboard(elementId) {
+    const text = document.getElementById(elementId).innerText;
+    navigator.clipboard.writeText(text).then(() => {
+        showToast("Copied to clipboard!", "success");
+    }).catch(err => {
+        console.error('Failed to copy text: ', err);
+        showToast("Failed to copy", "error");
+    });
+}
+</script>
 {% endblock %}

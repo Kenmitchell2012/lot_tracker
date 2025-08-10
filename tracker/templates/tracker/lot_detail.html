@@ -121,17 +121,18 @@
     </div>
 </div>
 
-<!-- Copy to Clipboard Script -->
+<!-- Copy to Clipboard Script with Toast -->
 <script>
 function copyToClipboard(text) {
     if (!text || text === "N/A") {
-        alert("Nothing to copy");
+        showToast("Nothing to copy", "error");
         return;
     }
     navigator.clipboard.writeText(text).then(() => {
-        alert("Copied: " + text);
+        showToast("Copied to clipboard!", "success");
     }).catch(err => {
         console.error("Failed to copy: ", err);
+        showToast("Failed to copy", "error");
     });
 }
 </script>

@@ -64,25 +64,40 @@ class MonthlyBoard(models.Model):
 class SubLot(models.Model):
     """Represents a final LABELED lot (e.g., CRT999999-DCM-AR) and links to its parent."""
     parent_lot = models.ForeignKey(Lot, related_name='sub_lots', on_delete=models.CASCADE)
-    source_board = models.ForeignKey(
-        MonthlyBoard, 
-        related_name='sub_lots', 
-        on_delete=models.SET_NULL, 
-        null=True, 
-        blank=True
-    )
+    source_board = models.ForeignKey(MonthlyBoard, related_name='sub_lots', on_delete=models.SET_NULL, null=True, blank=True)
     sub_lot_id = models.CharField(max_length=255, unique=True)
+    product_type = models.CharField(max_length=100, blank=True, null=True)
+    
     labeled_by = models.CharField(max_length=255, blank=True, null=True)
     labeled_date = models.DateField(blank=True, null=True)
     final_quantity = models.IntegerField(blank=True, null=True)
-    status = models.CharField(max_length=100, blank=True, null=True)
-    due_date = models.DateField(blank=True, null=True)
-
-    product_type = models.CharField(max_length=100, blank=True, null=True)
+    status = models.CharField(max_length=100, blank=True, null=True, help_text="Corresponds to 'Chart Status'")
+    due_date = models.DateField(blank=True, null=True, help_text="Corresponds to 'Release Date'")
     latest_comment = models.TextField(blank=True, null=True, help_text="Stores the latest update/comment from Monday.com for this item.")
+    
+    product_descriptions = models.TextField(blank=True, null=True)
+    create_date = models.DateField(blank=True, null=True)
+    initial_quantity = models.IntegerField(blank=True, null=True, help_text="Corresponds to the 'QTY' column")
+    labeling_progress = models.IntegerField(blank=True, null=True)
+    labeling_status = models.CharField(max_length=100, blank=True, null=True, help_text="Corresponds to the 'Labeling' status")
+    qc_status = models.CharField(max_length=100, blank=True, null=True, help_text="Corresponds to the 'QC' status")
+    days_to_label = models.CharField(max_length=50, blank=True, null=True)
+    days_to_release = models.CharField(max_length=50, blank=True, null=True)
 
     def __str__(self):
         return self.sub_lot_id
+    
+    @property
+    def calculated_days_to_label(self):
+        if self.parent_lot and self.parent_lot.packaged_date and self.labeled_date:
+            return (self.labeled_date - self.parent_lot.packaged_date).days
+        return None
+
+    @property
+    def calculated_days_to_release(self):
+        if self.create_date and self.due_date:
+            return (self.due_date - self.create_date).days
+        return None
 
 class Document(models.Model):
     """Represents a file (NCR, etc.) associated with a specific Donor."""
