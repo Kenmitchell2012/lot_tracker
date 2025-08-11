@@ -33,3 +33,6 @@ scanned_documents/processed/*
 !scanned_documents/processed/.gitkeep
 core/settings.py
 /donor_documents
+donor_documents/*
+!donor_documents/.gitkeep
+/donor_documents

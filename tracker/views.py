@@ -128,38 +128,53 @@ def global_search(request):
     query = request.GET.get('q', '').strip()
     results = []
     
-    # Add a print statement for debugging
-    print(f"--- Global search received query: '{query}' ---")
-    
-    # UPDATED: Lowered the search minimum to 2 characters
     if len(query) >= 2:
+        # --- Donor Search ---
         try:
             donors = Donor.objects.filter(donor_id__icontains=query)[:5]
             results.extend([
-                {'type': 'Donor', 'text': d.donor_id, 'url': reverse('tracker:donor_detail', args=[d.id])} 
+                {
+                    'type': 'Donor',
+                    'title': d.donor_id,
+                    'subtitle': 'Donor Record',  # Added subtitle
+                    'url': reverse('tracker:donor_detail', args=[d.id])
+                } 
                 for d in donors
             ])
         except Exception as e:
             print(f"Error during global search for Donors: {e}")
 
+        # --- Lot Search ---
         try:
             lots = Lot.objects.filter(lot_id__icontains=query)[:5]
             results.extend([
-                {'type': 'Lot', 'text': l.lot_id, 'url': reverse('tracker:lot_detail', args=[l.id])} 
+                {
+                    'type': 'Lot',
+                    'title': l.lot_id,
+                    'subtitle': 'Lot Record',  # Added subtitle
+                    'url': reverse('tracker:lot_detail', args=[l.id])
+                } 
                 for l in lots
             ])
         except Exception as e:
             print(f"Error during global search for Lots: {e}")
 
+        # --- Sub-Lot Search ---
         try:
             sub_lots = SubLot.objects.filter(sub_lot_id__icontains=query)[:5]
             results.extend([
-                {'type': 'Sub-Lot', 'text': s.sub_lot_id, 'url': reverse('tracker:sub_lot_detail', args=[s.id])} 
+                {
+                    'type': 'Sub-Lot',
+                    'title': s.sub_lot_id,
+                    'subtitle': 'Sub-Lot Record',  # Added subtitle
+                    'url': reverse('tracker:sub_lot_detail', args=[s.id])
+                } 
                 for s in sub_lots
             ])
         except Exception as e:
             print(f"Error during global search for Sub-Lots: {e}")
         
+        # --- Document Search ---
         try:
             documents = Document.objects.filter(
                 Q(document_type__icontains=query) | 
@@ -168,8 +183,9 @@ def global_search(request):
             ).select_related('donor')[:5]
             results.extend([
                 {
-                    'type': 'Document', 
-                    'text': f"{d.document_type} ({d.donor.donor_id})", 
+                    'type': 'Document',
+                    'title': d.document_type,
+                    'subtitle': f"For Donor: {d.donor.donor_id}", # Better subtitle
                     'url': reverse('tracker:donor_detail', args=[d.donor.id])
                 } 
                 for d in documents
