@@ -67,6 +67,8 @@
                          {% if user.is_staff %}
                             <a href="{% url 'tracker:admin_dashboard' %}" class="link-underline px-3 py-2 text-sm font-medium text-gray-300">Dashboard</a>
                             <a href="{% url 'tracker:report_list' %}" class="link-underline px-3 py-2 text-sm font-medium text-gray-300">Reports</a>
+                            <a href="{% url 'tracker:productivity_report' %}" class="... ">Productivity Report</a>
+
                             <a href="{% url 'tracker:yield_report' %}" class="link-underline px-3 py-2 text-sm font-medium text-gray-300">Yield</a>
                             <a href="{% url 'tracker:manage_boards' %}" class="link-underline px-3 py-2 text-sm font-medium text-gray-300">Boards</a>
                             <a href="{% url 'tracker:labeled_lot_list' %}" class="link-underline px-3 py-2 text-sm font-medium text-gray-300">Labeled Lots</a>

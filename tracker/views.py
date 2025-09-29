@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from django.core.paginator import Paginator
 from django.db.models import Count, Q, Sum, Max
 from django.contrib.auth.decorators import login_required
-from .forms import DocumentForm, SignUpForm, LoginForm
+from .forms import DocumentForm, SignUpForm, LoginForm, MonthlyBoardForm
 from django.contrib.auth.views import LoginView
 from django.contrib.auth import logout
 from django.contrib.auth import login, authenticate
@@ -395,14 +395,53 @@ def donor_detail(request, donor_id):
 
 @login_required
 def lot_detail(request, lot_id):
-    """
-    Displays a detailed timeline for a single Lot, showing
-    all related Events in chronological order.
-    """
-    lot = get_object_or_404(Lot, id=lot_id)
+    lot = get_object_or_404(Lot.objects.select_related('donor'), id=lot_id)
+    
+    # --- Timeline Event Aggregation ---
+    timeline_events = []
+
+    # 1. Add events from the parent Lot
+    if lot.packaged_date:
+        timeline_events.append({
+            'date': lot.packaged_date,
+            'title': 'Packaged',
+            'details': f"By {lot.packaged_by}" if lot.packaged_by else f"{lot.quantity or ''} Grafts Created"
+        })
+    if lot.fpp_date:
+        timeline_events.append({
+            'date': lot.fpp_date,
+            'title': 'FPP Inspected',
+            'details': f"By {lot.fpp_by}" if lot.fpp_by else "Final product inspection complete."
+        })
+    if lot.irr_out_date:
+        timeline_events.append({
+            'date': lot.irr_out_date,
+            'title': 'Sent for Irradiation',
+            'details': f"Run #: {lot.irr_run_number}" if lot.irr_run_number else "Sent to sterilization facility."
+        })
+    if lot.irr_return_date:
+        timeline_events.append({
+            'date': lot.irr_return_date,
+            'title': 'Returned from Irradiation',
+            'details': "Sterilization complete."
+        })
+
+    # 2. Add events from all child SubLots
+    for sub_lot in lot.sub_lots.all():
+        if sub_lot.labeled_date:
+            timeline_events.append({
+                'date': sub_lot.labeled_date,
+                'title': 'Graft Labeled',
+                'details': f"{sub_lot.sub_lot_id} (Qty: {sub_lot.final_quantity or 'N/A'})",
+                'sub_lot_id': sub_lot.id
+            })
+
+    # 3. Sort all events chronologically
+    timeline_events.sort(key=lambda x: x['date'])
 
     context = {
         'lot': lot,
+        'timeline_events': timeline_events,
     }
     return render(request, 'tracker/lot_detail.html', context)
 
@@ -548,18 +587,6 @@ def sync_with_monday(request):
 
                 for item in items:
                     full_lot_id = item.get('name')
-
-                    # --- DEBUG BLOCK FOR THE SPECIFIC LOT ---
-                    if full_lot_id == 'CRT240252-SB':
-                        print(f"\n--- DEBUGGING LOT: {full_lot_id} ---")
-                        print("Raw column values from API:")
-                        # We will specifically look for the IRR Return Date column
-                        for col in item['column_values']:
-                            if col['id'] == 'date_1_mkkmyysb':
-                                print(f"  - Found IRR Return Date column. Raw text: '{col.get('text')}'")
-                        print("----------------------------------\n")
-                    # --- END DEBUG BLOCK ---
-
                     if not full_lot_id:
                         continue
 
@@ -574,7 +601,11 @@ def sync_with_monday(request):
 
                     lot_object, created = Lot.objects.update_or_create(
                         lot_id=full_lot_id,
-                        defaults={ 'donor': donor_object, 'product_type': product_type_str or "", 'data_source': 'PRIMARY_SYNC'}
+                        defaults={
+                            'donor': donor_object,
+                            'product_type': product_type_str or "",
+                            'data_source': 'PRIMARY_SYNC'
+                        }
                     )
                     
                     for col in item['column_values']:
@@ -608,7 +639,7 @@ def sync_with_monday(request):
             messages.success(request, f"Successfully synced {items_synced} items from Monday.com.")
 
         except Exception as e:
-            logging.error("ERROR IN SYNC VIEW:", exc_info=True)
+            logger.error("ERROR IN SYNC VIEW:", exc_info=True)
             messages.error(request, f"An error occurred during sync: {e}")
 
         return redirect(next_url)
@@ -827,12 +858,22 @@ def sync_board(request, board_id):
 @login_required
 def manage_boards(request):
     if request.method == 'POST':
-        # Logic to handle a form for adding a new MonthlyBoard
-        # For simplicity, you can start by adding them via the Django Admin
-        pass
+        form = MonthlyBoardForm(request.POST)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f"Successfully added board: {form.cleaned_data['name']}")
+            return redirect('tracker:manage_boards')
+        else:
+            # If the form is invalid, the errors will be displayed on the page
+            messages.error(request, "Please correct the errors below.")
+    else:
+        form = MonthlyBoardForm()
 
     all_boards = MonthlyBoard.objects.all()
-    context = {'boards': all_boards}
+    context = {
+        'boards': all_boards,
+        'form': form, # Add the form to the context
+    }
     return render(request, 'tracker/manage_boards.html', context)
 
 # -- receive the uploaded files and save them to your scanned_documents/new/ folder. --
@@ -1002,6 +1043,92 @@ def report_list(request):
     }
 
     return render(request, 'tracker/report_list.html', context)
+
+@login_required
+def productivity_report(request):
+    today = timezone.localdate()
+    selected_year = int(request.GET.get('year', today.year))
+    selected_month = int(request.GET.get('month', today.month))
+
+    # --- Grand Totals ---
+    # First, calculate the grand totals for the entire month
+    all_packaged_lots = Lot.objects.filter(fpp_date__year=selected_year, fpp_date__month=selected_month)
+    all_irradiated_lots = Lot.objects.filter(irr_out_date__year=selected_year, irr_out_date__month=selected_month)
+    all_labeled_lots = SubLot.objects.filter(source_board__year=selected_year, source_board__month=selected_month)
+
+    grand_totals = {
+        'packaged_lots': all_packaged_lots.count(),
+        'packaged_grafts': all_packaged_lots.aggregate(total=Sum('quantity'))['total'] or 0,
+        'irradiated_lots': all_irradiated_lots.count(),
+        'irradiated_grafts': all_irradiated_lots.aggregate(total=Sum('quantity'))['total'] or 0,
+        'labeled_lots': all_labeled_lots.values('parent_lot').distinct().count(),
+        'labeled_grafts': all_labeled_lots.aggregate(total=Sum('final_quantity'))['total'] or 0,
+    }
+
+    # --- Define the specific categories to be EXCLUDED from MS ---
+    # This is where you define the groups from your report.
+    SPECIFIC_CATEGORIES = {
+        'DERM-CAS': ['DoD'],
+        'DCD Dermis': ['DCD'],
+        'Amnion': ['AM', 'AM2'],
+    }
+
+    report_data = []
+    sum_of_specifics = {'packaged_lots': 0, 'packaged_grafts': 0, 'irradiated_lots': 0, 'irradiated_grafts': 0, 'labeled_lots': 0, 'labeled_grafts': 0}
+
+    # Calculate totals for each specific category
+    for category_name, product_types in SPECIFIC_CATEGORIES.items():
+        packaged_lots = all_packaged_lots.filter(product_type__in=product_types)
+        packaged_lots_count = packaged_lots.count()
+        packaged_grafts_sum = packaged_lots.aggregate(total=Sum('quantity'))['total'] or 0
+
+        irradiated_lots = all_irradiated_lots.filter(product_type__in=product_types)
+        irradiated_lots_count = irradiated_lots.count()
+        irradiated_grafts_sum = irradiated_lots.aggregate(total=Sum('quantity'))['total'] or 0
+
+        labeled_lots = all_labeled_lots.filter(product_type__in=product_types)
+        labeled_lots_count = labeled_lots.values('parent_lot').distinct().count()
+        labeled_grafts_sum = labeled_lots.aggregate(total=Sum('final_quantity'))['total'] or 0
+        
+        category_data = {
+            'name': category_name,
+            'packaged_lots': packaged_lots_count, 'packaged_grafts': packaged_grafts_sum,
+            'irradiated_lots': irradiated_lots_count, 'irradiated_grafts': irradiated_grafts_sum,
+            'labeled_lots': labeled_lots_count, 'labeled_grafts': labeled_grafts_sum,
+        }
+        report_data.append(category_data)
+        
+        # Keep a running total of the specific categories
+        for key in sum_of_specifics:
+            sum_of_specifics[key] += category_data[key]
+
+    # --- Calculate the 'MS' category by subtracting the specifics from the grand total ---
+    ms_data = {
+        'name': 'MS',
+        'packaged_lots': grand_totals['packaged_lots'] - sum_of_specifics['packaged_lots'],
+        'packaged_grafts': grand_totals['packaged_grafts'] - sum_of_specifics['packaged_grafts'],
+        'irradiated_lots': grand_totals['irradiated_lots'] - sum_of_specifics['irradiated_lots'],
+        'irradiated_grafts': grand_totals['irradiated_grafts'] - sum_of_specifics['irradiated_grafts'],
+        'labeled_lots': grand_totals['labeled_lots'] - sum_of_specifics['labeled_lots'],
+        'labeled_grafts': grand_totals['labeled_grafts'] - sum_of_specifics['labeled_grafts'],
+    }
+    # Add the MS data to the beginning of the list
+    report_data.insert(0, ms_data)
+
+    # UI dropdown choices
+    years = range(today.year - 5, today.year + 1)
+    months = [(i, date(2000, i, 1).strftime('%B')) for i in range(1, 13)]
+
+    context = {
+        'report_data': report_data,
+        'grand_totals': grand_totals,
+        'years': years,
+        'months': months,
+        'selected_year': selected_year,
+        'selected_month': selected_month,
+    }
+    return render(request, 'tracker/productivity_report.html', context)
+
 
 
 @login_required

@@ -21,6 +21,8 @@ urlpatterns = [
     path('reports/labeled-lots/', views.labeled_lot_list, name='labeled_lot_list'),
     path('reports/interactive-data/', views.interactive_report_data, name='interactive_report_data'),
     path('reports/yield/', views.yield_report, name='yield_report'),
+    path('reports/productivity/', views.productivity_report, name='productivity_report'),
+
     # path('reports/export/pdf/', views.export_reports_pdf, name='export_reports_pdf'),
 
     # 🔹 Admin Dashboard

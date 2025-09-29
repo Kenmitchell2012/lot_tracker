@@ -3,29 +3,82 @@
 {% block title %}Manage Monthly Boards{% endblock %}
 
 {% block content %}
-<div class="max-w-4xl mx-auto p-6">
-    <h1 class="text-3xl font-bold text-gray-100 mb-6">Manage & Sync Boards</h1>
+<div class="max-w-7xl mx-auto p-6">
+    <div class="mb-8">
+        <h1 class="text-3xl font-bold text-gray-100">Manage & Sync Boards</h1>
+        <p class="text-gray-400 mt-1">Add new monthly boards or sync existing ones.</p>
+    </div>
     
-    <div class="bg-gray-800 rounded-lg shadow-lg border border-gray-700">
-        <ul class="divide-y divide-gray-700">
-            {% for board in boards %}
-                <li class="p-4 flex justify-between items-center">
+    <!-- 
+      This is the new two-column layout.
+      It's one column by default and switches to two columns on large screens (lg:).
+    -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:items-start">
+        
+        <!-- Left Column: Add New Board Form -->
+        <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
+            <h2 class="text-xl font-semibold text-white mb-4">Add a New Board</h2>
+            <form method="post" class="space-y-4">
+                {% csrf_token %}
+                <div>
+                    <label for="{{ form.name.id_for_label }}" class="block text-sm font-medium text-gray-300">Board Name</label>
+                    {{ form.name }}
+                    {{ form.name.errors }}
+                </div>
+                <div>
+                    <label for="{{ form.board_id.id_for_label }}" class="block text-sm font-medium text-gray-300">Board ID</label>
+                    {{ form.board_id }}
+                    {{ form.board_id.errors }}
+                </div>
+                <div class="grid grid-cols-2 gap-4">
                     <div>
-                        <p class="font-semibold text-white">{{ board.name }}</p>
-                        <p class="text-sm text-gray-400">Board ID: {{ board.board_id }}</p>
-                        <p class="text-xs text-gray-500">
-                            Last Synced: {{ board.last_synced|date:"m-d-Y H:i"|default:"Never" }}
-                        </p>
+                        <label for="{{ form.month.id_for_label }}" class="block text-sm font-medium text-gray-300">Month</label>
+                        {{ form.month }}
+                        {{ form.month.errors }}
                     </div>
-                    <form action="{% url 'tracker:sync_board' board.board_id %}" method="post">
-                        {% csrf_token %}
-                        <button type="submit" class="bg-teal-600 text-white px-4 py-2 rounded-md hover:bg-teal-700 text-sm">
-                            Sync Now
-                        </button>
-                    </form>
-                </li>
-            {% endfor %}
-        </ul>
+                    <div>
+                        <label for="{{ form.year.id_for_label }}" class="block text-sm font-medium text-gray-300">Year</label>
+                        {{ form.year }}
+                        {{ form.year.errors }}
+                    </div>
+                </div>
+                <div>
+                    <button type="submit" class="w-full bg-indigo-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-indigo-700 transition-colors">
+                        Save New Board
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Right Column: Existing Boards List -->
+        <div class="bg-gray-800 rounded-lg shadow-lg border border-gray-700">
+            <div class="p-4 border-b border-gray-700">
+                <h2 class="text-xl font-semibold text-white">Existing Boards</h2>
+            </div>
+            <ul class="divide-y divide-gray-700">
+                {% for board in boards %}
+                    <li class="p-4 flex justify-between items-center">
+                        <div>
+                            <p class="font-semibold text-white">{{ board.name }}</p>
+                            <p class="text-sm text-gray-400">Board ID: {{ board.board_id }}</p>
+                            <p class="text-xs text-gray-500">
+                                Last Synced: {{ board.last_synced|date:"m-d-Y H:i"|default:"Never" }}
+                            </p>
+                        </div>
+                        <form action="{% url 'tracker:sync_board' board.board_id %}" method="post">
+                            {% csrf_token %}
+                            <input type="hidden" name="next" value="{{ request.path }}">
+                            <button type="submit" class="bg-teal-600 text-white px-4 py-2 rounded-md hover:bg-teal-700 text-sm">
+                                Sync Now
+                            </button>
+                        </form>
+                    </li>
+                {% empty %}
+                    <li class="p-4 text-center text-gray-400">No boards have been added yet.</li>
+                {% endfor %}
+            </ul>
+        </div>
+
     </div>
 </div>
 {% endblock %}

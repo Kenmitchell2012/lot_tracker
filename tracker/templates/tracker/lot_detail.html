@@ -5,137 +5,64 @@
 {% block title %}Lot Details: {{ lot.lot_id }}{% endblock %}
 
 {% block content %}
-<div class="max-w-7xl mx-auto p-6">
-    <div class="bg-gray-900 p-8 rounded-2xl shadow-xl border border-gray-700">
-        <!-- Header -->
-        <div class="flex flex-col md:flex-row md:items-center md:justify-between border-b border-gray-700 pb-5 mb-6">
-            <div>
-                <h1 class="text-4xl font-extrabold text-white tracking-tight">{{ lot.lot_id }}</h1>
-                <p class="text-lg text-teal-400 mt-1 flex items-center gap-2">
-                    Part of Donor:
-                    <a href="{% url 'tracker:donor_detail' lot.donor.id %}" 
-                       class="hover:underline hover:text-teal-300 transition">
-                        {{ lot.donor.donor_id }}
-                    </a>
-                    <!-- Copy Button -->
-                    <button onclick="copyToClipboard('{{ lot.donor.donor_id }}')" 
-                            class="text-gray-400 hover:text-teal-400 transition" 
-                            title="Copy Donor ID">
-                        📋
-                    </button>
-                </p>
+<div class="max-w-4xl mx-auto p-6">
+    <!-- Main Header Card -->
+    <div class="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700 mb-8">
+        <div class="border-b border-gray-700 pb-4 mb-6">
+            <h1 class="text-3xl font-bold text-white">{{ lot.lot_id }}</h1>
+            <p class="text-lg text-teal-400">
+                Part of Donor: 
+                <a href="{% url 'tracker:donor_detail' lot.donor.id %}" class="hover:underline">{{ lot.donor.donor_id }}</a>
+            </p>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm">
+             <div>
+                <p class="text-gray-400 font-medium">Product Family</p>
+                <p class="font-semibold text-gray-100 mt-1">{{ lot.product_type|default:"N/A" }}</p>
             </div>
-            <div class="mt-4 md:mt-0">
-                <span class="px-4 py-2 rounded-full text-sm font-semibold {{ lot.status|status_badge_color }}">
+            <div>
+                <p class="text-gray-400 font-medium">Status</p>
+                <span class="mt-1 inline-block px-3 py-1 text-xs font-semibold rounded-full {{ lot.status|status_badge_color }}">
                     {{ lot.status|default:"N/A" }}
                 </span>
             </div>
-        </div>
-
-        <!-- Main Info Grid -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-8 text-sm">
-            <!-- Column 1 -->
-            <div class="space-y-5">
-                <div>
-                    <p class="text-gray-400 uppercase text-xs tracking-wider">Product Code</p>
-                    <p class="text-lg font-semibold text-gray-100">{{ lot.product_code|default:"N/A" }}</p>
-                </div>
-                <div>
-                    <p class="text-gray-400 uppercase text-xs tracking-wider">Product Family</p>
-                    <p class="text-lg font-semibold text-gray-100">{{ lot.product_type|default:"N/A" }}</p>
-                </div>
-                <div>
-                    <p class="text-gray-400 uppercase text-xs tracking-wider">Initial Quantity</p>
-                    <p class="text-lg font-semibold text-gray-100">{{ lot.quantity|intcomma|default:"N/A" }}</p>
-                </div>
-            </div>
-
-            <!-- Column 2 -->
-            <div class="space-y-5">
-                <div>
-                    <p class="text-gray-400 uppercase text-xs tracking-wider">Sterilization</p>
-                    <span class="mt-1 inline-block px-3 py-1 text-xs font-semibold rounded-full {{ lot.sterilization|status_badge_color }}">
-                        {{ lot.sterilization|default:"N/A" }}
-                    </span>
-                </div>
-                <div>
-                    <p class="text-gray-400 uppercase text-xs tracking-wider">QC Out # / Reason</p>
-                    <p class="text-lg font-semibold text-gray-100">
-                        {{ lot.qc_out_number|default:"N/A" }} 
-                        {% if lot.qc_out_reason %}
-                            <span class="ml-2 px-2 py-0.5 text-xs rounded-full {{ lot.qc_out_reason|status_badge_color }}">
-                                {{ lot.qc_out_reason }}
-                            </span>
-                        {% endif %}
-                    </p>
-                </div>
-                <div>
-                    <p class="text-gray-400 uppercase text-xs tracking-wider">DA / VAL</p>
-                    <span class="mt-1 inline-block px-3 py-1 text-xs font-bold rounded-full {% if lot.da_val %}bg-green-800 text-green-200{% else %}bg-gray-700 text-gray-300{% endif %}">
-                        {% if lot.da_val %}Yes{% else %}No{% endif %}
-                    </span>
-                </div>
-            </div>
-
-            <!-- Column 3 -->
-            <div class="space-y-5">
-                <div>
-                    <p class="text-gray-400 uppercase text-xs tracking-wider">Packaged Date / By</p>
-                    <p class="text-lg font-semibold text-gray-100">
-                        {{ lot.packaged_date|date:"M d, Y"|default:"N/A" }} by {{ lot.packaged_by|default:"N/A" }}
-                    </p>
-                </div>
-                <div>
-                    <p class="text-gray-400 uppercase text-xs tracking-wider">FPP Date / By</p>
-                    <p class="text-lg font-semibold text-gray-100">
-                        {{ lot.fpp_date|date:"M d, Y"|default:"N/A" }} by {{ lot.fpp_by|default:"N/A" }}
-                    </p>
-                </div>
-                <div>
-                    <p class="text-gray-400 uppercase text-xs tracking-wider">IRR Out / Run #</p>
-                    <p class="text-lg font-semibold text-gray-100">
-                        {{ lot.irr_out_date|date:"M d, Y"|default:"N/A" }} (Run: {{ lot.irr_run_number|default:"N/A" }})
-                    </p>
-                </div>
-                <div>
-                    <p class="text-gray-400 uppercase text-xs tracking-wider">IRR Return Date</p>
-                    <p class="text-lg font-semibold text-gray-100">
-                        {{ lot.irr_return_date|date:"M d, Y"|default:"N/A" }}
-                    </p>
-                </div>
+            <div>
+                <p class="text-gray-400 font-medium">Initial Quantity</p>
+                <p class="font-semibold text-gray-100 mt-1">{{ lot.quantity|intcomma|default:"N/A" }}</p>
             </div>
         </div>
+    </div>
 
-        <!-- Graft ID Section -->
-        <div class="mt-8 pt-6 border-t border-gray-700">
-            <p class="text-gray-400 uppercase text-sm tracking-wider">Graft ID #</p>
-            <div class="mt-2 inline-flex items-center gap-3 px-4 py-2 rounded-lg bg-gray-800 border border-gray-700">
-                <span class="font-mono text-lg font-semibold text-gray-100 tracking-wide break-all">
-                    {{ lot.graft_id_number|default:"N/A" }}
-                </span>
-                <button onclick="copyToClipboard('{{ lot.graft_id_number }}')" 
-                        class="text-gray-400 hover:text-teal-400 transition-colors duration-200" 
-                        title="Copy Graft ID">
-                    📋
-                </button>
+    <!-- Visual Timeline -->
+    <div>
+        <h2 class="text-2xl font-semibold mb-6 text-gray-200">Lot Timeline</h2>
+        <div class="relative pl-6">
+            <!-- The vertical line -->
+            <div class="absolute left-0 top-0 h-full w-0.5 bg-gray-700" style="transform: translateX(11px);"></div>
+            
+            <div class="space-y-8">
+                {% for event in timeline_events %}
+                    <div class="relative">
+                        <!-- The dot on the timeline -->
+                        <div class="absolute left-0 top-1.5 h-6 w-6 rounded-full bg-teal-500 border-4 border-gray-900"></div>
+                        
+                        <div class="ml-12">
+                            <p class="font-semibold text-white">{{ event.title }}</p>
+                            <p class="text-sm text-gray-400">{{ event.date|date:"F j, Y" }}</p>
+                            <p class="mt-1 text-sm text-gray-300">
+                                {% if event.sub_lot_id %}
+                                    <a href="{% url 'tracker:sub_lot_detail' event.sub_lot_id %}" class="hover:underline">{{ event.details }}</a>
+                                {% else %}
+                                    {{ event.details }}
+                                {% endif %}
+                            </p>
+                        </div>
+                    </div>
+                {% empty %}
+                    <div class="ml-12 text-gray-500">No timeline events found for this lot.</div>
+                {% endfor %}
             </div>
         </div>
     </div>
 </div>
-
-<!-- Copy to Clipboard Script with Toast -->
-<script>
-function copyToClipboard(text) {
-    if (!text || text === "N/A") {
-        showToast("Nothing to copy", "error");
-        return;
-    }
-    navigator.clipboard.writeText(text).then(() => {
-        showToast("Copied to clipboard!", "success");
-    }).catch(err => {
-        console.error("Failed to copy: ", err);
-        showToast("Failed to copy", "error");
-    });
-}
-</script>
 {% endblock %}

@@ -1,0 +1,82 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}Monthly Productivity Report{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto p-6">
+    <!-- Header with Filters (unchanged) -->
+    <div class="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
+        <div>
+            <h1 class="text-3xl font-bold text-gray-100">Quality/Production Productivity Report</h1>
+            <p class="text-gray-400">Showing data for: <span class="font-semibold text-white">{{ selected_month|date:"F" }} {{ selected_year }}</span></p>
+        </div>
+        
+        <form method="get" class="flex items-center gap-2 bg-gray-800 p-2 rounded-lg border border-gray-700">
+            <select name="month" class="bg-gray-700 text-white border-gray-600 rounded-md p-2 focus:ring-teal-500 focus:border-teal-500">
+                {% for month_num, month_name in months %}
+                    <option value="{{ month_num }}" {% if month_num == selected_month %}selected{% endif %}>{{ month_name }}</option>
+                {% endfor %}
+            </select>
+            <select name="year" class="bg-gray-700 text-white border-gray-600 rounded-md p-2 focus:ring-teal-500 focus:border-teal-500">
+                {% for year in years %}
+                    <option value="{{ year }}" {% if year == selected_year %}selected{% endif %}>{{ year }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit" class="bg-teal-600 text-white px-4 py-2 rounded-md hover:bg-teal-700 transition-colors">View Report</button>
+        </form>
+    </div>
+
+
+    <div class="bg-gray-800 shadow-lg rounded-lg overflow-hidden border border-gray-700">
+        <div class="overflow-x-auto">
+            <table class="min-w-full text-center">
+                <thead class="bg-gray-700 text-xs font-medium text-gray-300 uppercase tracking-wider">
+                    <tr>
+                        <th class="px-6 py-3 text-left">Allograft Tissue</th>
+                        <th class="px-6 py-3">Final Packaged/FPP</th>
+                        <th class="px-6 py-3">Terminally Irradiated</th>
+                        <th class="px-6 py-3">*Labeled</th>
+                    </tr>
+                </thead>
+                <!-- Main body of the table with loops -->
+                {% for category in report_data %}
+                    {% cycle 'bg-gray-800' 'bg-gray-900/40' as row_color silent %}
+                    <tbody class="{{ row_color }} border-t-4 border-gray-700">
+                        <!-- Lots Row -->
+                        <tr>
+                            <td class="px-6 py-3 font-semibold text-left text-white whitespace-nowrap">{{ category.name }} Lots</td>
+                            <td class="px-6 py-3 text-lg text-gray-200 font-medium">{{ category.packaged_lots|intcomma }}</td>
+                            <td class="px-6 py-3 text-lg text-gray-200 font-medium">{{ category.irradiated_lots|intcomma }}</td>
+                            <td class="px-6 py-3 text-lg text-gray-200 font-medium">{{ category.labeled_lots|intcomma }}</td>
+                        </tr>
+                        <!-- Grafts Row -->
+                        <tr>
+                            <td class="px-6 py-3 font-semibold text-left text-white whitespace-nowrap">{{ category.name }} Grafts</td>
+                            <td class="px-6 py-3 text-lg text-gray-200 font-medium">{{ category.packaged_grafts|intcomma }}</td>
+                            <td class="px-6 py-3 text-lg text-gray-200 font-medium">{{ category.irradiated_grafts|intcomma }}</td>
+                            <td class="px-6 py-3 text-lg text-gray-200 font-medium">{{ category.labeled_grafts|intcomma }}</td>
+                        </tr>
+                    </tbody>
+                {% endfor %}
+
+                <!-- Grand Totals Footer -->
+                <tfoot class="bg-green-900/50 font-bold text-white uppercase text-sm tracking-wider">
+                    <tr>
+                        <td class="px-6 py-4 text-left">Total Lots</td>
+                        <td class="px-6 py-4 text-xl">{{ grand_totals.packaged_lots|intcomma }}</td>
+                        <td class="px-6 py-4 text-xl">{{ grand_totals.irradiated_lots|intcomma }}</td>
+                        <td class="px-6 py-4 text-xl">{{ grand_totals.labeled_lots|intcomma }}</td>
+                    </tr>
+                    <tr>
+                        <td class="px-6 py-4 text-left">Total Grafts</td>
+                        <td class="px-6 py-4 text-xl">{{ grand_totals.packaged_grafts|intcomma }}</td>
+                        <td class="px-6 py-4 text-xl">{{ grand_totals.irradiated_grafts|intcomma }}</td>
+                        <td class="px-6 py-4 text-xl">{{ grand_totals.labeled_grafts|intcomma }}</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
