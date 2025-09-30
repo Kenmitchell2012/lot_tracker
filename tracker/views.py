@@ -1050,6 +1050,9 @@ def productivity_report(request):
     selected_year = int(request.GET.get('year', today.year))
     selected_month = int(request.GET.get('month', today.month))
 
+    # Create a full date object for easy formatting in the template
+    selected_date_obj = date(selected_year, selected_month, 1)
+
     # --- Grand Totals ---
     # First, calculate the grand totals for the entire month
     all_packaged_lots = Lot.objects.filter(fpp_date__year=selected_year, fpp_date__month=selected_month)
@@ -1126,6 +1129,7 @@ def productivity_report(request):
         'months': months,
         'selected_year': selected_year,
         'selected_month': selected_month,
+        'selected_date_obj': selected_date_obj,
     }
     return render(request, 'tracker/productivity_report.html', context)
 
