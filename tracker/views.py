@@ -1044,32 +1044,19 @@ def report_list(request):
 
     return render(request, 'tracker/report_list.html', context)
 
-@login_required
+login_required
 def productivity_report(request):
     today = timezone.localdate()
     selected_year = int(request.GET.get('year', today.year))
     selected_month = int(request.GET.get('month', today.month))
-
-    # Create a full date object for easy formatting in the template
     selected_date_obj = date(selected_year, selected_month, 1)
 
-    # --- Grand Totals ---
-    # First, calculate the grand totals for the entire month
-    all_packaged_lots = Lot.objects.filter(fpp_date__year=selected_year, fpp_date__month=selected_month)
+    # Base querysets for the selected month
+    all_packaged_lots = Lot.objects.filter(packaged_date__year=selected_year, packaged_date__month=selected_month)
     all_irradiated_lots = Lot.objects.filter(irr_out_date__year=selected_year, irr_out_date__month=selected_month)
     all_labeled_lots = SubLot.objects.filter(source_board__year=selected_year, source_board__month=selected_month)
 
-    grand_totals = {
-        'packaged_lots': all_packaged_lots.count(),
-        'packaged_grafts': all_packaged_lots.aggregate(total=Sum('quantity'))['total'] or 0,
-        'irradiated_lots': all_irradiated_lots.count(),
-        'irradiated_grafts': all_irradiated_lots.aggregate(total=Sum('quantity'))['total'] or 0,
-        'labeled_lots': all_labeled_lots.values('parent_lot').distinct().count(),
-        'labeled_grafts': all_labeled_lots.aggregate(total=Sum('final_quantity'))['total'] or 0,
-    }
-
-    # --- Define the specific categories to be EXCLUDED from MS ---
-    # This is where you define the groups from your report.
+    # Define the specific categories
     SPECIFIC_CATEGORIES = {
         'DERM-CAS': ['DoD'],
         'DCD Dermis': ['DCD'],
@@ -1077,46 +1064,54 @@ def productivity_report(request):
     }
 
     report_data = []
-    sum_of_specifics = {'packaged_lots': 0, 'packaged_grafts': 0, 'irradiated_lots': 0, 'irradiated_grafts': 0, 'labeled_lots': 0, 'labeled_grafts': 0}
+    
+    # --- Calculate the 'MS' (catch-all) category first ---
+    # Get a flat list of all product types that are in the specific categories
+    specific_product_types = [ptype for ptypes in SPECIFIC_CATEGORIES.values() for ptype in ptypes]
+    
+    # Filter for lots that are NOT in the specific types
+    ms_packaged_lots = all_packaged_lots.exclude(product_type__in=specific_product_types)
+    ms_irradiated_lots = all_irradiated_lots.exclude(product_type__in=specific_product_types)
+    ms_labeled_lots = all_labeled_lots.exclude(product_type__in=specific_product_types)
 
-    # Calculate totals for each specific category
+    ms_data = {
+        'name': 'MS',
+        'packaged_lots': ms_packaged_lots.count(),
+        'packaged_grafts': ms_packaged_lots.aggregate(total=Sum('quantity'))['total'] or 0,
+        'irradiated_lots': ms_irradiated_lots.count(),
+        'irradiated_grafts': ms_irradiated_lots.aggregate(total=Sum('quantity'))['total'] or 0,
+        'labeled_lots': ms_labeled_lots.values('parent_lot').distinct().count(),
+        'labeled_grafts': ms_labeled_lots.aggregate(total=Sum('final_quantity'))['total'] or 0,
+    }
+    report_data.append(ms_data)
+
+    # --- Calculate totals for each specific category ---
     for category_name, product_types in SPECIFIC_CATEGORIES.items():
         packaged_lots = all_packaged_lots.filter(product_type__in=product_types)
-        packaged_lots_count = packaged_lots.count()
-        packaged_grafts_sum = packaged_lots.aggregate(total=Sum('quantity'))['total'] or 0
-
         irradiated_lots = all_irradiated_lots.filter(product_type__in=product_types)
-        irradiated_lots_count = irradiated_lots.count()
-        irradiated_grafts_sum = irradiated_lots.aggregate(total=Sum('quantity'))['total'] or 0
-
         labeled_lots = all_labeled_lots.filter(product_type__in=product_types)
-        labeled_lots_count = labeled_lots.values('parent_lot').distinct().count()
-        labeled_grafts_sum = labeled_lots.aggregate(total=Sum('final_quantity'))['total'] or 0
-        
+
         category_data = {
             'name': category_name,
-            'packaged_lots': packaged_lots_count, 'packaged_grafts': packaged_grafts_sum,
-            'irradiated_lots': irradiated_lots_count, 'irradiated_grafts': irradiated_grafts_sum,
-            'labeled_lots': labeled_lots_count, 'labeled_grafts': labeled_grafts_sum,
+            'packaged_lots': packaged_lots.count(),
+            'packaged_grafts': packaged_lots.aggregate(total=Sum('quantity'))['total'] or 0,
+            'irradiated_lots': irradiated_lots.count(),
+            'irradiated_grafts': irradiated_lots.aggregate(total=Sum('quantity'))['total'] or 0,
+            'labeled_lots': labeled_lots.values('parent_lot').distinct().count(),
+            'labeled_grafts': labeled_lots.aggregate(total=Sum('final_quantity'))['total'] or 0,
         }
         report_data.append(category_data)
         
-        # Keep a running total of the specific categories
-        for key in sum_of_specifics:
-            sum_of_specifics[key] += category_data[key]
-
-    # --- Calculate the 'MS' category by subtracting the specifics from the grand total ---
-    ms_data = {
-        'name': 'MS',
-        'packaged_lots': grand_totals['packaged_lots'] - sum_of_specifics['packaged_lots'],
-        'packaged_grafts': grand_totals['packaged_grafts'] - sum_of_specifics['packaged_grafts'],
-        'irradiated_lots': grand_totals['irradiated_lots'] - sum_of_specifics['irradiated_lots'],
-        'irradiated_grafts': grand_totals['irradiated_grafts'] - sum_of_specifics['irradiated_grafts'],
-        'labeled_lots': grand_totals['labeled_lots'] - sum_of_specifics['labeled_lots'],
-        'labeled_grafts': grand_totals['labeled_grafts'] - sum_of_specifics['labeled_grafts'],
+    # --- THIS IS THE FIX: Calculate Grand Totals at the end ---
+    # This guarantees the totals match the sum of the rows.
+    grand_totals = {
+        'packaged_lots': sum(c['packaged_lots'] for c in report_data),
+        'packaged_grafts': sum(c['packaged_grafts'] for c in report_data),
+        'irradiated_lots': sum(c['irradiated_lots'] for c in report_data),
+        'irradiated_grafts': sum(c['irradiated_grafts'] for c in report_data),
+        'labeled_lots': sum(c['labeled_lots'] for c in report_data),
+        'labeled_grafts': sum(c['labeled_grafts'] for c in report_data),
     }
-    # Add the MS data to the beginning of the list
-    report_data.insert(0, ms_data)
 
     # UI dropdown choices
     years = range(today.year - 5, today.year + 1)
